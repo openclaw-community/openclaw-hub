@@ -1,0 +1,80 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      
+      - name: Run tests
+        run: |
+          pytest tests/ --cov=openclaw_hub --cov-report=xml --cov-report=term
+        continue-on-error: true
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy
+      
+      - name: Run ruff
+        run: ruff check src/ || true
+        continue-on-error: true
+      
+      - name: Run mypy
+        run: mypy src/ --ignore-missing-imports || true
+        continue-on-error: true
+```
+
+**Note:** I added `continue-on-error: true` and `|| true` to some steps so the workflow won't fail while you're building the project. Remove these later when you have actual code.
+
+### Step 4: Commit the File
+1. Scroll down to the **"Commit new file"** section
+2. In the commit message box, type:
+```
+   ci: Add GitHub Actions workflow for tests and linting
+   
+   - Run tests on Python 3.10, 3.11, 3.12
+   - Run ruff and mypy for code quality
+   - Upload coverage reports
+   - Set to continue-on-error during initial development
