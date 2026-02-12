@@ -4,7 +4,7 @@ Workflow execution engine
 
 import re
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from .models import WorkflowDefinition, WorkflowExecution, WorkflowStep
 from ..providers.base import CompletionRequest, Message
 from ..providers.manager import ProviderManager
@@ -16,8 +16,9 @@ logger = structlog.get_logger()
 class WorkflowEngine:
     """Executes workflow definitions"""
     
-    def __init__(self, provider_manager: ProviderManager):
+    def __init__(self, provider_manager: ProviderManager, mcp_manager=None):
         self.provider_manager = provider_manager
+        self.mcp_manager = mcp_manager
     
     def substitute_variables(self, template: str, variables: Dict[str, Any]) -> str:
         """Replace ${variable} placeholders with actual values"""
@@ -73,9 +74,33 @@ class WorkflowEngine:
         variables: Dict[str, Any]
     ) -> Any:
         """Execute an MCP tool step"""
-        # TODO: Implement MCP integration in Week 4
-        logger.warning("mcp_not_implemented", step_id=step.id)
-        return f"MCP tool {step.tool} not yet implemented"
+        if not self.mcp_manager:
+            raise ValueError("MCP manager not configured")
+        
+        # Substitute variables in parameters
+        params = {}
+        if step.params:
+            for key, value in step.params.items():
+                if isinstance(value, str):
+                    params[key] = self.substitute_variables(value, variables)
+                else:
+                    params[key] = value
+        
+        # Execute tool
+        result = await self.mcp_manager.call_tool(
+            server_name=step.server,
+            tool_name=step.tool,
+            arguments=params
+        )
+        
+        logger.info(
+            "mcp_step_complete",
+            step_id=step.id,
+            server=step.server,
+            tool=step.tool
+        )
+        
+        return result
     
     async def execute_step(
         self,

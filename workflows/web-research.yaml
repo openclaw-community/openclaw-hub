@@ -1,0 +1,24 @@
+name: web-research
+description: Fetch web content and analyze it with AI
+
+steps:
+  - id: fetch_content
+    type: mcp_tool
+    server: fetch
+    tool: fetch_url
+    params:
+      url: ${input.url}
+    output: web_content
+
+  - id: analyze
+    type: llm
+    model: qwen2.5:32b-instruct
+    prompt: |
+      Analyze this web content and provide key insights:
+      
+      ${web_content}
+      
+      Focus on the main points and any important information.
+    output: analysis
+
+output: analysis

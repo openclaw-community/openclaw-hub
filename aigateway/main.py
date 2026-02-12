@@ -10,9 +10,11 @@ from datetime import datetime
 from .storage.database import init_database
 from .api.completions import router as completions_router
 from .api.workflows import router as workflows_router
+from .api.mcp import router as mcp_router
 from .providers.manager import ProviderManager
 from .orchestration.engine import WorkflowEngine
 from .orchestration.loader import WorkflowLoader
+from .mcp.manager import MCPManager
 from .config import settings
 
 # Configure structured logging
@@ -36,10 +38,12 @@ app = FastAPI(
 provider_manager: ProviderManager = None
 workflow_engine: WorkflowEngine = None
 workflow_loader: WorkflowLoader = None
+mcp_manager: MCPManager = None
 
 # Mount routers
 app.include_router(completions_router, tags=["completions"])
 app.include_router(workflows_router, tags=["workflows"])
+app.include_router(mcp_router, tags=["mcp"])
 
 
 @app.get("/health")
@@ -66,7 +70,7 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global provider_manager, workflow_engine, workflow_loader
+    global provider_manager, workflow_engine, workflow_loader, mcp_manager
     
     logger.info("ai_gateway_starting", version="0.1.0")
     
@@ -84,8 +88,12 @@ async def startup_event():
     providers = list(provider_manager.providers.keys())
     logger.info("providers_initialized", providers=providers)
     
-    # Initialize workflow engine
-    workflow_engine = WorkflowEngine(provider_manager)
+    # Initialize MCP manager
+    mcp_manager = MCPManager()
+    logger.info("mcp_manager_initialized")
+    
+    # Initialize workflow engine with MCP support
+    workflow_engine = WorkflowEngine(provider_manager, mcp_manager)
     logger.info("workflow_engine_initialized")
     
     # Initialize workflow loader
@@ -97,12 +105,15 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    global provider_manager
+    global provider_manager, mcp_manager
     
     logger.info("ai_gateway_shutting_down")
     
     if provider_manager:
         await provider_manager.close_all()
+    
+    if mcp_manager:
+        await mcp_manager.close_all()
 
 
 if __name__ == "__main__":
