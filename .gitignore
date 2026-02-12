@@ -28,3 +28,6 @@ aigateway.db
 
 # Environment
 .env
+
+# Sensitive local documentation
+GITHUB.md

@@ -17,7 +17,7 @@ class ProviderManager:
 
     def __init__(
         self,
-        ollama_url: str = "http://192.168.68.72:11434",
+        ollama_url: str = "http://localhost:11434",
         openai_api_key: Optional[str] = None,
         anthropic_api_key: Optional[str] = None
     ):

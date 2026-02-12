@@ -191,7 +191,7 @@ aigateway/
 ## Configuration
 
 Currently using hardcoded defaults:
-- **Ollama**: http://192.168.68.72:11434
+- **Ollama**: http://localhost:11434
 - **Database**: ./aigateway.db (SQLite)
 - **Port**: 8080 (localhost only)
 

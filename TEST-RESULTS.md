@@ -10,7 +10,7 @@
 
 ✅ **Environment Setup**
 - API Keys configured (.env file created)
-- Ollama URL: http://192.168.68.72:11434
+- Ollama URL: http://localhost:11434 (configured via .env)
 - OpenAI API Key: Configured
 - Anthropic API Key: Configured
 - Server: http://127.0.0.1:8080

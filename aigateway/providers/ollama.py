@@ -14,7 +14,7 @@ logger = structlog.get_logger()
 class OllamaProvider(ProviderBase):
     """Provider for local Ollama models"""
 
-    def __init__(self, base_url: str = "http://192.168.68.72:11434"):
+    def __init__(self, base_url: str = "http://localhost:11434"):
         self.base_url = base_url
         self.client = httpx.AsyncClient(timeout=120.0)
 

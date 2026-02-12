@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./aigateway.db"
     
     # Ollama (local)
-    ollama_url: str = "http://192.168.68.72:11434"
+    ollama_url: str = "http://localhost:11434"
     
     # OpenAI (optional)
     openai_api_key: Optional[str] = None
