@@ -1,0 +1,23 @@
+name: summarize
+description: Summarize text in multiple steps - extract key points, then create final summary
+
+steps:
+  - id: extract_points
+    type: llm
+    model: qwen2.5:32b-instruct
+    prompt: |
+      Extract the key points from this text as a bullet list:
+      
+      ${input.text}
+    output: key_points
+
+  - id: create_summary
+    type: llm
+    model: qwen2.5:32b-instruct
+    prompt: |
+      Create a concise 2-sentence summary based on these key points:
+      
+      ${key_points}
+    output: summary
+
+output: summary

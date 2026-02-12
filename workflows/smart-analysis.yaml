@@ -1,0 +1,26 @@
+name: smart-analysis
+description: Analyze text using cheap model first, then expensive model for deep insight
+
+steps:
+  - id: quick_scan
+    type: llm
+    model: qwen2.5:32b-instruct
+    prompt: |
+      Quickly scan this text and identify if it requires deep analysis or is straightforward.
+      Answer with just "SIMPLE" or "COMPLEX":
+      
+      ${input.text}
+    output: complexity
+
+  - id: simple_analysis
+    type: llm
+    model: qwen2.5:32b-instruct
+    prompt: |
+      Provide a quick analysis of this text:
+      
+      ${input.text}
+      
+      (Complexity: ${complexity})
+    output: analysis
+
+output: analysis

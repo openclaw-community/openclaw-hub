@@ -9,7 +9,10 @@ import structlog
 from datetime import datetime
 from .storage.database import init_database
 from .api.completions import router as completions_router
+from .api.workflows import router as workflows_router
 from .providers.manager import ProviderManager
+from .orchestration.engine import WorkflowEngine
+from .orchestration.loader import WorkflowLoader
 from .config import settings
 
 # Configure structured logging
@@ -29,11 +32,14 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Global provider manager (will be initialized on startup)
+# Global instances (initialized on startup)
 provider_manager: ProviderManager = None
+workflow_engine: WorkflowEngine = None
+workflow_loader: WorkflowLoader = None
 
 # Mount routers
 app.include_router(completions_router, tags=["completions"])
+app.include_router(workflows_router, tags=["workflows"])
 
 
 @app.get("/health")
@@ -60,7 +66,7 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global provider_manager
+    global provider_manager, workflow_engine, workflow_loader
     
     logger.info("ai_gateway_starting", version="0.1.0")
     
@@ -77,6 +83,15 @@ async def startup_event():
     # Log available providers
     providers = list(provider_manager.providers.keys())
     logger.info("providers_initialized", providers=providers)
+    
+    # Initialize workflow engine
+    workflow_engine = WorkflowEngine(provider_manager)
+    logger.info("workflow_engine_initialized")
+    
+    # Initialize workflow loader
+    workflow_loader = WorkflowLoader(workflows_dir="./workflows")
+    workflow_loader.load_all()
+    logger.info("workflows_loaded", count=len(workflow_loader.workflows))
 
 
 @app.on_event("shutdown")
