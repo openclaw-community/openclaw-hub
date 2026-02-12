@@ -52,13 +52,19 @@ class AnthropicProvider(ProviderBase):
                 messages.append({"role": msg.role, "content": msg.content})
 
         try:
-            response = await self.client.messages.create(
-                model=model,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
-                system=system_message,
-                messages=messages
-            )
+            # Build request params
+            params = {
+                "model": model,
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+                "messages": messages
+            }
+            
+            # Only include system if it's not None
+            if system_message is not None:
+                params["system"] = system_message
+            
+            response = await self.client.messages.create(**params)
 
             latency_ms = int((time.time() - start_time) * 1000)
 

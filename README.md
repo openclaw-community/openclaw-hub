@@ -2,6 +2,24 @@
 
 AI-specific ESB middleware for multi-LLM orchestration with MCP integration.
 
+## 🔗 GitHub Repository
+
+**Repository:** https://github.com/openclaw-community/openclaw-hub
+
+**Workflow:**
+```bash
+# After making changes, always commit and push:
+git add .
+git commit -m "Your descriptive message"
+git push origin main
+
+# To pull latest changes:
+git pull origin main
+
+# Check status:
+git status
+```
+
 ## Features
 - ✅ **Multi-Provider Support**: OpenAI, Anthropic, Ollama (local)
 - ✅ **Automatic Routing**: Intelligent model-based provider selection
