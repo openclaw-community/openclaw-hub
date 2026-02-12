@@ -5,7 +5,6 @@ Completion API endpoints
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..providers.base import CompletionRequest, CompletionResponse
-from ..providers.ollama import OllamaProvider
 from ..storage.database import get_session
 from ..storage.models import Request
 import uuid
@@ -14,23 +13,28 @@ import structlog
 logger = structlog.get_logger()
 router = APIRouter()
 
-# Initialize provider (will be moved to dependency injection later)
-ollama = OllamaProvider()
+
+def get_provider_manager():
+    """Get provider manager from app state"""
+    from ..main import provider_manager
+    if provider_manager is None:
+        raise HTTPException(status_code=503, detail="Provider manager not initialized")
+    return provider_manager
 
 
 @router.post("/v1/chat/completions", response_model=CompletionResponse)
 async def create_completion(
     request: CompletionRequest,
-    db: AsyncSession = Depends(get_session)
+    db: AsyncSession = Depends(get_session),
+    manager = Depends(get_provider_manager)
 ) -> CompletionResponse:
     """
     OpenAI-compatible chat completion endpoint
     Routes to appropriate provider based on model
     """
     try:
-        # For MVP, route to Ollama for all requests
-        # TODO: Smart routing based on model prefix
-        response = await ollama.complete(request)
+        # Route to appropriate provider
+        response = await manager.complete(request)
 
         # Log to database
         log_entry = Request(
@@ -51,6 +55,7 @@ async def create_completion(
             "completion_success",
             model=response.model,
             tokens=response.total_tokens,
+            cost_usd=response.cost_usd,
             latency_ms=response.latency_ms
         )
 
@@ -62,7 +67,7 @@ async def create_completion(
 
 
 @router.get("/v1/models")
-async def list_models():
-    """List available models"""
-    models = await ollama.list_models()
+async def list_models(manager = Depends(get_provider_manager)):
+    """List available models from all providers"""
+    models = await manager.list_all_models()
     return {"models": models}
