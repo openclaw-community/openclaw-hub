@@ -25,6 +25,26 @@
 - ✅ **YAML Workflow Orchestration**: Human-readable multi-step pipelines
 - ✅ **MCP Tool Integration**: External tool support (web search, files, APIs)
 
+## 📖 Documentation
+
+**OpenClaw Hub is fully self-documenting!**
+
+### For Humans
+- **Interactive API Explorer**: http://127.0.0.1:8080/docs (Swagger UI)
+- **Clean Documentation**: http://127.0.0.1:8080/redoc
+- **OpenAPI Spec**: http://127.0.0.1:8080/openapi.json
+
+### For AI Agents
+- **Usage Instructions**: `GET /v1/usage` - Returns how to use the Hub
+- **Capability Discovery**:
+  - `GET /v1/models` - List available LLM models
+  - `GET /v1/workflows` - List available workflows
+  - `GET /v1/github/capabilities` - GitHub integration details
+  - `GET /v1/social/capabilities` - Instagram/social media details
+  - `GET /v1/videos/capabilities` - Video generation details
+
+**Start here:** All 27 endpoints include complete request/response schemas, examples, and validation rules.
+
 ## Quick Start
 
 ### Installation

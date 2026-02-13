@@ -15,6 +15,7 @@ from .api.images import router as images_router
 from .api.social import router as social_router
 from .api.videos import router as videos_router
 from .api.github import router as github_router
+from .api.usage import router as usage_router
 from .providers.manager import ProviderManager
 from .orchestration.engine import WorkflowEngine
 from .orchestration.loader import WorkflowLoader
@@ -45,6 +46,7 @@ workflow_loader: WorkflowLoader = None
 mcp_manager: MCPManager = None
 
 # Mount routers
+app.include_router(usage_router, tags=["documentation"])
 app.include_router(completions_router, tags=["completions"])
 app.include_router(workflows_router, tags=["workflows"])
 app.include_router(mcp_router, tags=["mcp"])
