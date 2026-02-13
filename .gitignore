@@ -31,3 +31,4 @@ aigateway.db
 
 # Sensitive local documentation
 GITHUB.md
+*.log
