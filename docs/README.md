@@ -2,6 +2,26 @@
 
 Welcome to the AI Gateway documentation!
 
+## 📖 Documentation Access
+
+### For AI Agents
+**Start here:** `GET http://127.0.0.1:8080/v1/usage`
+
+This single endpoint returns complete usage instructions, all capabilities, discovery patterns, examples, and best practices specifically designed for AI agents.
+
+### For Humans
+- **[Interactive API Explorer](http://127.0.0.1:8080/docs)** - Swagger UI (when server running)
+- **[Clean Documentation](http://127.0.0.1:8080/redoc)** - ReDoc format
+- **[OpenAPI Specification](http://127.0.0.1:8080/openapi.json)** - Machine-readable spec
+
+### Discovery Endpoints
+Each capability domain has its own discovery endpoint:
+- `GET /v1/models` - List available LLM models
+- `GET /v1/workflows` - List orchestration workflows
+- `GET /v1/github/capabilities` - GitHub integration capabilities
+- `GET /v1/social/capabilities` - Instagram/social media capabilities
+- `GET /v1/videos/capabilities` - Video generation status
+
 ## Quick Links
 
 - **[Getting Started](../README.md)** - Installation and quick start
@@ -217,6 +237,12 @@ Each provider can be configured independently:
 ## API Reference
 
 ### Core Endpoints
+
+**Usage Instructions (AI Agents)**
+```bash
+GET /v1/usage
+→ Complete usage guide with all capabilities, examples, and discovery endpoints
+```
 
 **Health Check**
 ```bash

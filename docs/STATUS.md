@@ -1,18 +1,68 @@
 # AI Gateway - Development Status
 
-**Date**: 2026-02-11  
-**Status**: 🟢 MVP COMPLETE - ALL 4 WEEKS  
-**Version**: 1.0.0
+**Date**: 2026-02-12  
+**Status**: 🟢 PRODUCTION READY - EXPANDED CAPABILITIES  
+**Version**: 1.2.0
 
 ---
 
-## 🎉 PROJECT COMPLETE!
+## 🎉 PRODUCTION READY WITH EXPANDED CAPABILITIES!
 
-**AI Gateway** is now a fully functional AI orchestration platform with:
-- ✅ Multi-provider LLM support
+**OpenClaw Hub** is now a fully functional AI orchestration platform with:
+- ✅ Multi-provider LLM support (18 models)
 - ✅ Automatic cost-optimized routing
 - ✅ YAML workflow orchestration
 - ✅ MCP tool integration
+- ✅ Image generation (DALL-E 3)
+- ✅ Instagram posting (Late.dev)
+- ✅ GitHub integration (REST API v3)
+- ✅ AI agent discovery endpoint
+- ✅ Complete self-documentation
+
+---
+
+## ✨ Recent Updates (v1.1.0 - v1.2.0)
+
+### Version 1.2.0 (2026-02-12) - AI Agent Discovery
+**New Features:**
+1. **AI Agent Discovery Endpoint** (`/v1/usage`)
+   - Complete usage instructions for AI agents
+   - All capabilities documented in one endpoint
+   - Discovery patterns and best practices
+   - Request/response examples
+   - Makes Hub fully self-discoverable
+
+2. **Enhanced Documentation**
+   - Prominent documentation section in README
+   - Separated human vs AI agent documentation
+   - Updated all docs with discovery endpoints
+
+### Version 1.1.0 (2026-02-12) - GitHub & Instagram
+**New Features:**
+1. **Image Generation** (`aigateway/images/`)
+   - DALL-E 2 and DALL-E 3 support
+   - HD quality (up to 1792x1024)
+   - OpenAI-compatible API format
+   - Endpoint: `POST /v1/images/generations`
+
+2. **Instagram Integration** (`aigateway/social/`)
+   - Post images, carousels, videos via Late.dev
+   - Media upload support
+   - Scheduled posting
+   - Endpoints: `/v1/social/instagram/*`
+
+3. **GitHub Integration** (`aigateway/github/`)
+   - Full REST API v3 wrapper
+   - Repo, issue, PR management
+   - Code and issue search
+   - 12 endpoints total
+   - Rate limits: 5000 req/hr standard, 30/min search
+
+**Public Launch:**
+- Published LinkedIn article by Matthew
+- Posted Instagram content generated via Hub (dogfooding)
+- GitHub repository at openclaw-community/openclaw-hub
+- Apache 2.0 license for community contributions
 
 ---
 
@@ -47,11 +97,11 @@
 
 ---
 
-## 🏆 Complete Feature Matrix (All 4 Weeks)
+## 🏆 Complete Feature Matrix
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| **FastAPI Server** | ✅ | Production REST API |
+| **FastAPI Server** | ✅ | Production REST API (28 endpoints) |
 | **SQLite Database** | ✅ | Metrics & logging |
 | **Ollama Provider** | ✅ | Local (free) models |
 | **OpenAI Provider** | ✅ | GPT-4, GPT-3.5, GPT-4o |
@@ -62,6 +112,12 @@
 | **Variable Substitution** | ✅ | `${input.field}` syntax |
 | **Sequential Chaining** | ✅ | Multi-step LLM calls |
 | **MCP Integration** | ✅ | External tool support |
+| **Image Generation** | ✅ | DALL-E 2/3 (HD quality) |
+| **Instagram Posting** | ✅ | Via Late.dev (images/videos) |
+| **GitHub Integration** | ✅ | Full REST API v3 wrapper |
+| **AI Agent Discovery** | ✅ | `/v1/usage` endpoint |
+| **Self-Documentation** | ✅ | Swagger UI, ReDoc, OpenAPI |
+| **Capability Discovery** | ✅ | Per-domain discovery endpoints |
 | **Configuration** | ✅ | Environment-based (.env) |
 | **Structured Logging** | ✅ | JSON logs |
 | **Error Handling** | ✅ | Graceful failures |
@@ -69,7 +125,10 @@
 
 ---
 
-## 📊 API Endpoints (Complete)
+## 📊 API Endpoints (28 Total)
+
+### Documentation
+- `GET /v1/usage` - Complete usage guide for AI agents ⭐
 
 ### Core
 - `GET /health` - Health check
@@ -78,6 +137,32 @@
 ### LLM
 - `GET /v1/models` - List models by provider
 - `POST /v1/chat/completions` - Direct LLM calls
+
+### Images
+- `POST /v1/images/generations` - Generate images via DALL-E
+
+### Social Media
+- `GET /v1/social/capabilities` - List capabilities
+- `POST /v1/social/instagram/post` - Post to Instagram
+- `POST /v1/social/instagram/upload` - Upload media
+
+### GitHub
+- `GET /v1/github/capabilities` - List capabilities
+- `GET /v1/github/user` - Get authenticated user
+- `GET /v1/github/repos` - List repositories
+- `GET /v1/github/repos/{owner}/{repo}` - Get repo details
+- `GET /v1/github/repos/{owner}/{repo}/issues` - List issues
+- `POST /v1/github/repos/{owner}/{repo}/issues` - Create issue
+- `GET /v1/github/repos/{owner}/{repo}/issues/{number}` - Get issue
+- `PATCH /v1/github/repos/{owner}/{repo}/issues/{number}` - Update issue
+- `GET /v1/github/repos/{owner}/{repo}/pulls` - List PRs
+- `GET /v1/github/repos/{owner}/{repo}/pulls/{number}` - Get PR
+- `GET /v1/github/search/code` - Search code
+- `GET /v1/github/search/issues` - Search issues
+
+### Videos
+- `GET /v1/videos/capabilities` - Video generation status
+- `POST /v1/videos/generations` - Generate video (framework ready)
 
 ### Workflows
 - `GET /v1/workflows` - List available workflows
@@ -394,8 +479,10 @@ Clean code, full docs, standard tools
 
 ---
 
-**Last Updated**: 2026-02-11 23:10 PST  
-**Version**: 1.0.0  
-**Git Commits**: 6 total  
-**Lines of Code**: 1,800+  
-**Test Status**: All features working ✅
+**Last Updated**: 2026-02-12 21:57 PST  
+**Version**: 1.2.0  
+**Git Commits**: 11 total  
+**Lines of Code**: 3,500+  
+**API Endpoints**: 28 total  
+**Test Status**: All features working ✅  
+**Public Status**: Launched on GitHub (Apache 2.0 license)

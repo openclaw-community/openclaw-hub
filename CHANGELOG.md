@@ -7,12 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Open source community documentation (CONTRIBUTING.md, CODE_OF_CONDUCT.md)
-- Issue and PR templates for better contribution workflow
-- Comprehensive security policy (SECURITY.md)
+## [1.2.0] - 2026-02-12
 
-## [1.0.0] - 2026-02-12
+### Added
+- **AI Agent Discovery Endpoint**: `GET /v1/usage`
+  - Complete usage instructions for AI agents
+  - All capabilities documented in single endpoint
+  - Discovery patterns and best practices
+  - Request/response examples
+  - Makes Hub fully self-discoverable for autonomous agents
+- New documentation: `docs/AI-AGENT-DISCOVERY.md`
+- Updated README.md with prominent documentation section
+- Updated all documentation with discovery pattern guidance
+
+### Changed
+- Reorganized documentation to separate human vs AI agent docs
+- TOOLS.md updated with discovery endpoint instructions
+- Total endpoints: 28 (was 27)
+
+## [1.1.0] - 2026-02-12
+
+### Added
+- **Image Generation** (`aigateway/images/`)
+  - DALL-E 2 and DALL-E 3 support
+  - HD quality up to 1792x1024
+  - OpenAI-compatible API format
+  - Endpoint: `POST /v1/images/generations`
+  - Dogfooded: Used to generate Hub's own Instagram post
+
+- **Instagram Integration** (`aigateway/social/`)
+  - Post images, carousels, videos via Late.dev
+  - Media upload support with presigned URLs
+  - Scheduled posting capability
+  - Endpoints:
+    - `POST /v1/social/instagram/post`
+    - `POST /v1/social/instagram/upload`
+    - `GET /v1/social/capabilities`
+
+- **GitHub Integration** (`aigateway/github/`)
+  - Full REST API v3 wrapper
+  - Repository management (list, get details)
+  - Issue management (list, get, create, update)
+  - Pull request management (list, get)
+  - Code and issue search across GitHub
+  - 12 new endpoints total
+  - Capability discovery: `GET /v1/github/capabilities`
+  - Rate limits: 5000 req/hr (standard), 30 req/min (search)
+
+- **Video Generation Framework** (`aigateway/videos/`)
+  - API structure ready for Sora integration
+  - Alternative provider (Kie.ai) documented
+  - Capability discovery: `GET /v1/videos/capabilities`
+  - Awaiting OpenAI Sora API access
+
+- New documentation files:
+  - `GITHUB-INTEGRATION.md` - GitHub usage guide
+  - Integration examples in README
+
+### Changed
+- Repository naming: Standardized on "openclaw-hub" everywhere
+- Local folder renamed: `ai-middleware/` → `openclaw-hub-live/`
+- Updated MEMORY.md with Hub discovery pattern
+- Project officially named "OpenClaw Hub" (was "AI Gateway")
+
+### Public Launch
+- Published to GitHub under Apache 2.0 license
+- LinkedIn article by Matthew Grunert
+- Instagram launch post (generated via Hub itself)
+- Repository: https://github.com/openclaw-community/openclaw-hub
+
+### Security
+- GitHub token configuration added (GITHUB_TOKEN)
+- Late API key configuration added (LATE_API_KEY)
+- All credentials managed via .env file
+- Never exposed in logs or error messages
+
+## [1.0.0] - 2026-02-11
 
 ### Added
 - Multi-provider LLM support (OpenAI, Anthropic, Ollama)
@@ -100,7 +170,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date       | Highlights |
 |---------|------------|------------|
-| 1.0.0   | 2026-02-12 | Production release, all features complete |
+| 1.2.0   | 2026-02-12 | AI agent discovery endpoint, self-documentation |
+| 1.1.0   | 2026-02-12 | Image gen, Instagram, GitHub, public launch |
+| 1.0.0   | 2026-02-11 | Production release, LLM routing, workflows, MCP |
 | 0.1.0   | 2026-02-08 | Initial development version |
 
 ## Future Plans
@@ -134,6 +206,8 @@ Each release should include:
 
 ---
 
-[Unreleased]: https://github.com/openclaw-community/openclaw-hub/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/openclaw-community/openclaw-hub/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/openclaw-community/openclaw-hub/releases/tag/v1.2.0
+[1.1.0]: https://github.com/openclaw-community/openclaw-hub/releases/tag/v1.1.0
 [1.0.0]: https://github.com/openclaw-community/openclaw-hub/releases/tag/v1.0.0
 [0.1.0]: https://github.com/openclaw-community/openclaw-hub/releases/tag/v0.1.0
