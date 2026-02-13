@@ -26,7 +26,7 @@ Instead, please report security vulnerabilities using one of the following metho
 
 If you cannot use GitHub Security Advisories, send an email to:
 
-**[MAINTAINER: Add security contact email]**
+mgrunert.ca@gmail.com
 
 ### What to Include
 
