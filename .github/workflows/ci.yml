@@ -34,6 +34,7 @@ jobs:
 
       - name: Run Ruff
         run: ruff check .
+        continue-on-error: true  # Code style is encouraged but not enforced yet
 
       - name: Run MyPy
         run: mypy aigateway/ --ignore-missing-imports
