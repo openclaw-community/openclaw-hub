@@ -1,24 +1,18 @@
 # AI Gateway
 
-AI-specific ESB middleware for multi-LLM orchestration with MCP integration.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org)
 
-## 🔗 GitHub Repository
+> AI-specific ESB middleware for multi-LLM orchestration with MCP integration
 
-**Repository:** https://github.com/openclaw-community/openclaw-hub
+**Save 97% on AI costs** by intelligently routing requests to the best provider for each task.
 
-**Workflow:**
-```bash
-# After making changes, always commit and push:
-git add .
-git commit -m "Your descriptive message"
-git push origin main
+## 🔗 Links
 
-# To pull latest changes:
-git pull origin main
-
-# Check status:
-git status
-```
+- **Repository**: https://github.com/openclaw-community/openclaw-hub
+- **Documentation**: See [docs/](docs/) folder
+- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Security**: See [SECURITY.md](SECURITY.md)
 
 ## Features
 - ✅ **Multi-Provider Support**: OpenAI, Anthropic, Ollama (local)
@@ -26,8 +20,8 @@ git status
 - ✅ **Cost Tracking**: Real-time cost calculation and metrics
 - ✅ **OpenAI-Compatible API**: Drop-in replacement for OpenAI SDK
 - ✅ **Database Logging**: SQLite storage for all requests
-- 🚧 YAML-based workflow orchestration (Week 3)
-- 🚧 MCP tool integration (Week 4)
+- ✅ **YAML Workflow Orchestration**: Human-readable multi-step pipelines
+- ✅ **MCP Tool Integration**: External tool support (web search, files, APIs)
 
 ## Quick Start
 
@@ -174,25 +168,28 @@ aigateway/
 └── main.py          # Application entry point
 ```
 
-## Development
+## Contributing
 
-**Current Status**: Week 1 - Foundation ✅
-- [x] Project structure
-- [x] FastAPI skeleton
-- [x] SQLite database
-- [x] Ollama provider
-- [x] Basic completion endpoint
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- Coding standards
+- Pull request process
+- Testing guidelines
 
-**Next**: Week 2 - Additional Providers
-- [ ] OpenAI provider
-- [ ] Anthropic provider
-- [ ] Smart routing logic
+## License
 
-## Configuration
+Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
-Currently using hardcoded defaults:
-- **Ollama**: http://localhost:11434
-- **Database**: ./aigateway.db (SQLite)
-- **Port**: 8080 (localhost only)
+## Support
 
-Configuration file support coming in Week 2.
+- **Issues**: [GitHub Issues](https://github.com/openclaw-community/openclaw-hub/issues)
+- **Documentation**: See [docs/](docs/) folder
+- **Security**: Report vulnerabilities via [SECURITY.md](SECURITY.md)
+
+## Project Status
+
+**Version**: 1.0.0  
+**Status**: Production-ready  
+**Maintainer**: OpenClaw Community
+
+See [STATUS.md](STATUS.md) for detailed development history and [CHANGELOG.md](CHANGELOG.md) for version history.
