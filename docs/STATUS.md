@@ -177,7 +177,7 @@ ai-middleware/
 │   └── mcp/                       # ✅ NEW
 │       ├── __init__.py
 │       └── manager.py             # MCP server management
-├── workflows/
+├── pipelines/
 │   ├── README.md
 │   ├── summarize.yaml
 │   ├── smart-analysis.yaml
@@ -238,7 +238,7 @@ curl -X POST http://localhost:8080/v1/mcp/servers \
 ### User Guides
 - **README.md** - Quick start & overview
 - **MCP-INTEGRATION.md** - Tool integration guide
-- **workflows/README.md** - Workflow format
+- **pipelines/README.md** - Workflow format
 
 ### Developer Docs
 - **MVP-PLAN.md** - Original 4-week plan
@@ -247,7 +247,7 @@ curl -X POST http://localhost:8080/v1/mcp/servers \
 - OpenAPI docs at `/docs`
 
 ### Examples
-- 3 working workflows in `workflows/`
+- 3 working workflows in `pipelines/`
 - Test scripts for routing & MCP
 - Configuration templates
 

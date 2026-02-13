@@ -136,7 +136,7 @@ All three are properly gitignored.
 
 ### Committed to Git ✅
 - All Python code (`aigateway/**/*.py`)
-- All YAML workflows (`workflows/*.yaml`)
+- All YAML workflows (`pipelines/*.yaml`)
 - Documentation (`*.md` except GITHUB.md)
 - Configuration examples (`.env.example`)
 - Tests (`test_*.sh`)

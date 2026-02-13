@@ -156,7 +156,7 @@ CREATE TABLE workflows (
 2. Summarizes results (cheap fast model)
 3. Writes detailed report (premium model)
 
-**Workflow Config** (`workflows/research.yaml`):
+**Workflow Config** (`pipelines/research.yaml`):
 ```yaml
 name: research-assistant
 description: Search web, summarize, write report

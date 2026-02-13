@@ -15,7 +15,7 @@ Welcome to the AI Gateway documentation!
 
 - **[README.md](../README.md)** - Project overview and quick start
 - **[MCP Integration Guide](../MCP-INTEGRATION.md)** - Using external tools with MCP
-- **[Workflow Guide](../workflows/README.md)** - Creating YAML workflows
+- **[Workflow Guide](../pipelines/README.md)** - Creating YAML workflows
 
 ### Developer Guides
 
@@ -44,7 +44,7 @@ Welcome to the AI Gateway documentation!
 │  ┌──────────────────────────────┐  │
 │  │     API Layer                │  │
 │  │  /v1/chat/completions        │  │
-│  │  /v1/workflows/*             │  │
+│  │  /v1/pipelines/*             │  │
 │  │  /v1/mcp/*                   │  │
 │  └──────────────┬───────────────┘  │
 │                 │                   │

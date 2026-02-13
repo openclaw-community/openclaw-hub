@@ -87,9 +87,9 @@ GITHUB.md
 - ⚠️ `aigateway/config.py` - **Contains hardcoded IP**
 
 ### Workflows (3 files)
-- ✅ `workflows/summarize.yaml` - Clean
-- ✅ `workflows/smart-analysis.yaml` - Clean
-- ✅ `workflows/web-research.yaml` - Clean
+- ✅ `pipelines/summarize.yaml` - Clean
+- ✅ `pipelines/smart-analysis.yaml` - Clean
+- ✅ `pipelines/web-research.yaml` - Clean
 
 ### Python Code (22 files)
 - ⚠️ `aigateway/providers/ollama.py` - **Contains hardcoded IP**

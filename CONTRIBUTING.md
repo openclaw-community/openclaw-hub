@@ -341,7 +341,7 @@ def test_ollama_error_handling(ollama_provider):
 ### User Documentation
 
 - Update README.md for user-facing changes
-- Add examples to `workflows/` for new features
+- Add examples to `pipelines/` for new features
 - Update MCP-INTEGRATION.md for tool changes
 
 ### API Documentation
@@ -360,11 +360,11 @@ ai-gateway/
 │   ├── orchestration/     # Workflow engine
 │   ├── mcp/              # MCP integration
 │   └── storage/          # Database models
-├── workflows/            # Example YAML workflows
+├── pipelines/            # Example YAML pipelines
 ├── tests/               # Test suite
 ├── docs/                # Additional documentation
 └── .github/             # GitHub configuration
-    ├── workflows/       # CI/CD pipelines
+    ├── pipelines/       # CI/CD pipelines
     └── ISSUE_TEMPLATE/  # Issue templates
 ```
 

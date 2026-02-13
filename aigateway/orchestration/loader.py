@@ -14,7 +14,7 @@ logger = structlog.get_logger()
 class WorkflowLoader:
     """Loads and manages workflow definitions"""
     
-    def __init__(self, workflows_dir: str = "./workflows"):
+    def __init__(self, workflows_dir: str = "./pipelines"):
         self.workflows_dir = Path(workflows_dir)
         self.workflows: Dict[str, WorkflowDefinition] = {}
     

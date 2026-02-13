@@ -383,7 +383,7 @@ params:
 
 ## Examples Repository
 
-See `/workflows/` for more examples:
+See `/pipelines/` for more examples:
 - `web-research.yaml` - Fetch and analyze web content
 - `summarize.yaml` - Basic text processing
 - `smart-analysis.yaml` - Adaptive complexity routing

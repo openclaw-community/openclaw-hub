@@ -164,8 +164,8 @@ aigateway/
 ├── storage/          # Database models & migrations
 │   ├── database.py       # SQLAlchemy setup
 │   └── models.py         # Request/Workflow models
-├── orchestration/    # Workflow engine (TODO)
-├── mcp/             # MCP integration (TODO)
+├── orchestration/    # Workflow engine ✅
+├── mcp/             # MCP integration ✅
 ├── config.py        # Settings management ✅
 └── main.py          # Application entry point
 ```
@@ -191,7 +191,7 @@ Apache License 2.0 - see [LICENSE](LICENSE) for details.
 ## Project Status
 
 **Version**: 1.0.0  
-**Status**: Production-ready  
+**Status**: Core features production-ready; orchestration engine and MCP integration in development  
 **Maintainer**: OpenClaw Community
 
-See [STATUS.md](STATUS.md) for detailed development history and [CHANGELOG.md](CHANGELOG.md) for version history.
+See [docs/STATUS.md](docs/STATUS.md) for detailed development history and [CHANGELOG.md](CHANGELOG.md) for version history.
