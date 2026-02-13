@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     # Anthropic (optional)
     anthropic_api_key: Optional[str] = None
     
+    # Late API (Instagram posting - optional)
+    late_api_key: Optional[str] = None
+    late_instagram_account_id: Optional[str] = None
+    
+    # GitHub (optional)
+    github_token: Optional[str] = None
+    
     # Logging
     log_level: str = "INFO"
     

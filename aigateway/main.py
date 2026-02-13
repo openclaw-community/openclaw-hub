@@ -12,6 +12,9 @@ from .api.completions import router as completions_router
 from .api.workflows import router as workflows_router
 from .api.mcp import router as mcp_router
 from .api.images import router as images_router
+from .api.social import router as social_router
+from .api.videos import router as videos_router
+from .api.github import router as github_router
 from .providers.manager import ProviderManager
 from .orchestration.engine import WorkflowEngine
 from .orchestration.loader import WorkflowLoader
@@ -46,6 +49,9 @@ app.include_router(completions_router, tags=["completions"])
 app.include_router(workflows_router, tags=["workflows"])
 app.include_router(mcp_router, tags=["mcp"])
 app.include_router(images_router, tags=["images"])
+app.include_router(videos_router, tags=["videos"])
+app.include_router(social_router, tags=["social"])
+app.include_router(github_router, tags=["github"])
 
 
 @app.get("/health")
