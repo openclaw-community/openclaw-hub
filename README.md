@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org)
+[![Release](https://img.shields.io/github/v/release/openclaw-community/openclaw-hub)](https://github.com/openclaw-community/openclaw-hub/releases)
 
 > AI-specific ESB middleware for multi-LLM orchestration with MCP integration
 
@@ -10,6 +11,7 @@
 ## 🔗 Links
 
 - **Repository**: https://github.com/openclaw-community/openclaw-hub
+- **Latest Release**: https://github.com/openclaw-community/openclaw-hub/releases
 - **Documentation**: See [docs/](docs/) folder
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Security**: See [SECURITY.md](SECURITY.md)
