@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-02-13
+
+### Added
+- **Auto-Start Installation Scripts**
+  - `install-macos.sh`: LaunchAgent installer for macOS
+  - `install-linux.sh`: systemd service installer for Linux
+  - Comprehensive `docs/INSTALLATION.md` guide
+  - Windows instructions (Task Scheduler, NSSM)
+  - One-command installation with automatic startup on boot
+- System service management commands for all platforms
+- Health check verification in installers
+- Troubleshooting section in installation docs
+
+### Changed
+- Updated README.md Quick Start section with auto-start option
+- Installation now recommended over manual startup for production
+
+### Fixed
+- **Hub not restarting after system reboots** - Major stability improvement
+- Services now survive system updates and restarts
+- Prevents backup/cron job failures due to Hub unavailability
+
 ## [1.2.0] - 2026-02-12
 
 ### Added
