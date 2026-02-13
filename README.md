@@ -48,6 +48,33 @@
 ## Quick Start
 
 ### Installation
+
+**Option 1: Auto-Start (Recommended for Production)**
+
+Install as a system service that starts automatically on boot:
+
+```bash
+# Clone repository
+git clone https://github.com/openclaw-community/openclaw-hub.git
+cd openclaw-hub
+
+# Create virtual environment and install
+python3.12 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Configure API keys (optional)
+cp .env.example .env
+# Edit .env with your keys
+
+# Run platform-specific installer
+./install-macos.sh   # macOS
+./install-linux.sh   # Linux
+# See docs/INSTALLATION.md for Windows
+```
+
+**Option 2: Manual/Development**
+
 ```bash
 # Create virtual environment
 python3.12 -m venv venv
@@ -55,29 +82,16 @@ source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
-```
 
-### Configuration
-
-Create `.env` file (copy from `.env.example`):
-```bash
+# Configure
 cp .env.example .env
-```
+# Edit .env with your API keys (optional - Ollama works without keys)
 
-Edit `.env` and add your API keys (optional - Ollama works without keys):
-```bash
-# OpenAI (optional)
-OPENAI_API_KEY=sk-...
-
-# Anthropic (optional)
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-### Run Server
-```bash
-# Development mode (auto-reload)
+# Run server
 uvicorn aigateway.main:app --host 127.0.0.1 --port 8080 --reload
 ```
+
+📖 **Full installation guide**: [docs/INSTALLATION.md](docs/INSTALLATION.md)
 
 ### Test Endpoints
 
