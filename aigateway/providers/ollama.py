@@ -22,25 +22,27 @@ class OllamaProvider(ProviderBase):
         """Execute completion via Ollama API"""
         start_time = time.time()
 
-        # Convert to Ollama format
+        # Convert to OpenAI-compatible format
         ollama_messages = [
             {"role": msg.role, "content": msg.content}
             for msg in request.messages
         ]
 
+        # Translate "local" alias to actual model name
+        model_name = request.model
+        if model_name.lower() == "local":
+            model_name = "qwen2.5:32b-instruct"
+
         payload = {
-            "model": request.model,
+            "model": model_name,
             "messages": ollama_messages,
-            "stream": False,
-            "options": {
-                "temperature": request.temperature,
-                "num_predict": request.max_tokens
-            }
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens
         }
 
         try:
             response = await self.client.post(
-                f"{self.base_url}/api/chat",
+                f"{self.base_url}/v1/chat/completions",
                 json=payload
             )
             response.raise_for_status()
@@ -48,13 +50,16 @@ class OllamaProvider(ProviderBase):
 
             latency_ms = int((time.time() - start_time) * 1000)
 
-            # Extract token counts from Ollama response
-            prompt_tokens = result.get("prompt_eval_count", 0)
-            completion_tokens = result.get("eval_count", 0)
-            total_tokens = prompt_tokens + completion_tokens
+            # Extract from OpenAI-compatible format
+            choice = result["choices"][0]
+            usage = result.get("usage", {})
+            
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", 0)
 
             return CompletionResponse(
-                content=result["message"]["content"],
+                content=choice["message"]["content"],
                 model=request.model,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
