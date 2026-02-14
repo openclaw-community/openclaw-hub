@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # GitHub (optional)
     github_token: Optional[str] = None
     
+    # Kie.ai (Video Generation - optional)
+    kie_api_key: Optional[str] = None
+    
     # Logging
     log_level: str = "INFO"
     
