@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-02-14
+
+### Added
+- **Video Generation Integration** (Kie.ai)
+  - **Google VEO 3.1** support via Kie.ai
+    - `veo3_fast`: Cost-efficient model (~$0.20/5s, recommended)
+    - `veo3`: Highest quality model (~$0.30/5s)
+    - Native vertical video (true 9:16 support)
+    - Text-to-video and image-to-video generation
+    - Multilingual prompt support
+    - Background audio included by default
+    - 1080p default, 4K available
+    - 25% of Google's direct API pricing
+  - **Kling 2.6** support via Kie.ai
+    - Alternative video generation model ($0.28/5s)
+    - 5, 10, or 20 second durations
+    - Aspect ratios: 16:9, 9:16, 1:1
+    - Optional audio generation
+  - New `KieProvider` class for video generation
+  - Async task polling with status tracking
+  - Automatic cost calculation
+  - Production-ready video endpoint (`/v1/videos/generations`)
+  - Updated capabilities endpoint with model recommendations
+
+### Changed
+- Video generation status changed from "framework_ready" to "production_ready"
+- VEO 3.1 Fast set as default/recommended model
+- Updated video endpoint documentation with usage examples
+
 ## [1.3.1] - 2026-02-14
 
 ### Fixed

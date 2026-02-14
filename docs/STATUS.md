@@ -1,8 +1,8 @@
 # AI Gateway - Development Status
 
 **Date**: 2026-02-14  
-**Status**: 🟢 PRODUCTION READY - OLLAMA FIX  
-**Version**: 1.3.1
+**Status**: 🟢 PRODUCTION READY - VIDEO GENERATION  
+**Version**: 1.4.0
 
 ---
 
@@ -21,7 +21,18 @@
 
 ---
 
-## ✨ Recent Updates (v1.1.0 - v1.3.1)
+## ✨ Recent Updates (v1.1.0 - v1.4.0)
+
+### Version 1.4.0 (2026-02-14) - Video Generation Integration
+**Major Feature:**
+1. **Kie.ai Video Generation**
+   - Google VEO 3.1 support (Fast and Quality models)
+   - Kling 2.6 alternative provider
+   - Native vertical video (9:16)
+   - Text-to-video and image-to-video
+   - Background audio included
+   - Production-ready endpoint
+   - 25% of Google direct pricing
 
 ### Version 1.3.1 (2026-02-14) - Ollama Provider Fix
 **Bug Fix:**
