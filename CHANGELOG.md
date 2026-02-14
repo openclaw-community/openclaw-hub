@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-02-14
+
+### Fixed
+- **Ollama Provider**: Fixed OpenAI-compatible API integration
+  - Changed endpoint from `/api/chat` to `/v1/chat/completions`
+  - Switched to OpenAI-compatible request/response format
+  - Added `"local"` → `"qwen2.5:32b-instruct"` model name translation
+  - Resolves timeout issues with cron jobs using local model
+  - Tested with Ollama v0.16.1+
+
 ## [1.3.0] - 2026-02-13
 
 ### Added

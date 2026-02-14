@@ -1,8 +1,8 @@
 # AI Gateway - Development Status
 
-**Date**: 2026-02-12  
-**Status**: 🟢 PRODUCTION READY - EXPANDED CAPABILITIES  
-**Version**: 1.2.0
+**Date**: 2026-02-14  
+**Status**: 🟢 PRODUCTION READY - OLLAMA FIX  
+**Version**: 1.3.1
 
 ---
 
@@ -21,7 +21,31 @@
 
 ---
 
-## ✨ Recent Updates (v1.1.0 - v1.2.0)
+## ✨ Recent Updates (v1.1.0 - v1.3.1)
+
+### Version 1.3.1 (2026-02-14) - Ollama Provider Fix
+**Bug Fix:**
+1. **Fixed Ollama Integration**
+   - Switched to OpenAI-compatible API (`/v1/chat/completions`)
+   - Fixed request/response format compatibility
+   - Added "local" model alias translation
+   - Resolves timeout issues with cron jobs using local model
+   - Tested with Ollama v0.16.1+
+
+### Version 1.3.0 (2026-02-13) - Auto-Start Installation
+**New Features:**
+1. **Auto-Start Installation Scripts**
+   - One-command setup for macOS, Linux, Windows
+   - LaunchAgent (macOS), systemd (Linux), Task Scheduler (Windows)
+   - Survives system reboots and updates
+2. **Comprehensive Installation Guide**
+   - Platform-specific instructions
+   - Service management commands
+   - Troubleshooting section
+
+---
+
+## ✨ Previous Updates (v1.1.0 - v1.2.0)
 
 ### Version 1.2.0 (2026-02-12) - AI Agent Discovery
 **New Features:**
