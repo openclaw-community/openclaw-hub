@@ -15,7 +15,7 @@ class VideoGenerationRequest(BaseModel):
     """Request model for video generation."""
     prompt: str = Field(..., description="Text description of the desired video")
     model: Literal["sora-2", "sora-2-pro", "kling-2.6", "veo3", "veo3_fast"] = Field(
-        default="veo3_fast",
+        default="veo3",
         description="Model to use for generation"
     )
     duration: Literal[5, 10, 20] = Field(
@@ -94,11 +94,11 @@ async def generate_video(request: VideoGenerationRequest):
             aspect_ratio = request.aspect_ratio or "16:9"
             
             try:
-                result = await kie.generate_veo3_video(
+                result = await kie.generate_video(
                     prompt=request.prompt,
                     model=request.model,
                     aspect_ratio=aspect_ratio,
-                    image_urls=request.image_urls,
+                    duration=5,  # default duration
                     max_wait_seconds=300
                 )
                 
@@ -248,7 +248,7 @@ async def get_video_capabilities():
             }
         },
         "endpoint": "/v1/videos/generations",
-        "recommended_model": "veo3_fast",
+        "recommended_model": "veo3",
         "example": {
             "prompt": "A robot crab with glowing cyan eyes walking on a sandy beach at sunset, waves gently washing ashore",
             "model": "veo3_fast",
