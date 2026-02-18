@@ -154,10 +154,13 @@ async def shutdown_event():
 
 if __name__ == "__main__":
     import uvicorn
+    # settings.reload is only respected here (direct run via `python -m aigateway.main`).
+    # When launched via uvicorn CLI or a service manager (launchd/systemd), pass --reload
+    # explicitly on the command line if needed. Do not enable reload in production.
     uvicorn.run(
-        "main:app",
-        host="127.0.0.1",  # localhost only for security
-        port=8080,
-        reload=True,  # Auto-reload during development
-        log_level="info"
+        "aigateway.main:app",
+        host=settings.host,
+        port=settings.port,
+        reload=settings.reload,
+        log_level=settings.log_level.lower()
     )
