@@ -45,6 +45,7 @@ Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_PATH
 StandardError=append:$LOG_PATH
+Environment=OPENCLAW_SERVICE_MANAGER=systemd
 
 [Install]
 WantedBy=default.target
@@ -65,21 +66,25 @@ if curl -s --max-time 2 http://127.0.0.1:8080/health > /dev/null 2>&1; then
     echo ""
     echo "✅ OpenClaw Hub installed successfully!"
     echo ""
-    echo "Service Status:"
-    systemctl --user status "$SERVICE_NAME" --no-pager -l
-    echo ""
     echo "📊 Dashboard: http://127.0.0.1:8080/docs"
     echo "📝 Logs:      journalctl --user -u $SERVICE_NAME -f"
     echo "             (or tail -f $LOG_PATH)"
     echo ""
-    echo "The Hub will now start automatically on system boot."
+    echo "The Hub will now start automatically on boot and restart if it crashes."
     echo ""
-    echo "Commands:"
-    echo "  Start:   systemctl --user start $SERVICE_NAME"
-    echo "  Stop:    systemctl --user stop $SERVICE_NAME"
-    echo "  Restart: systemctl --user restart $SERVICE_NAME"
-    echo "  Status:  systemctl --user status $SERVICE_NAME"
-    echo "  Disable: systemctl --user disable $SERVICE_NAME"
+    echo "┌─────────────────────────────────────────────────────────────────┐"
+    echo "│  ⚠️  SERVICE MANAGEMENT — IMPORTANT                             │"
+    echo "│                                                                 │"
+    echo "│  The Hub is managed by systemd. Use these commands:            │"
+    echo "│                                                                 │"
+    echo "│  Stop:    systemctl --user stop $SERVICE_NAME                  │"
+    echo "│  Start:   systemctl --user start $SERVICE_NAME                 │"
+    echo "│  Restart: systemctl --user restart $SERVICE_NAME               │"
+    echo "│  Status:  systemctl --user status $SERVICE_NAME                │"
+    echo "│                                                                 │"
+    echo "│  ❌ Do NOT use: pkill, kill, or nohup                          │"
+    echo "│     systemd will immediately respawn any killed process.       │"
+    echo "└─────────────────────────────────────────────────────────────────┘"
 else
     echo ""
     echo "⚠️  Service installed but health check failed."

@@ -49,6 +49,19 @@
 
 ### Installation
 
+> **Already installed?** Check first before running any install commands:
+> ```bash
+> # macOS — is the Hub already a launchd service?
+> launchctl list | grep openclaw.hub
+>
+> # Linux — is the Hub already a systemd service?
+> systemctl --user status openclaw-hub
+>
+> # Either platform — is it simply running?
+> curl http://127.0.0.1:8080/health
+> ```
+> If the Hub is already running as a service, use `launchctl` (macOS) or `systemctl` (Linux) to manage it — **not** `pkill` or manual process commands. Killing the process directly will just cause the service manager to respawn it immediately.
+
 **Option 1: Auto-Start (Recommended for Production)**
 
 Install as a system service that starts automatically on boot:
@@ -74,6 +87,8 @@ cp .env.example .env
 ```
 
 **Option 2: Manual/Development**
+
+> ⚠️ **Only use this if you have NOT run `install-macos.sh` or `install-linux.sh`.** If you have, the Hub is already managed by a service manager — use Option 1's management commands instead.
 
 ```bash
 # Create virtual environment
