@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Kie.ai (Video Generation - optional)
     kie_api_key: Optional[str] = None
     
+    # Service manager (set automatically by install scripts; do not edit manually)
+    # Values: "launchd" | "systemd" | "manual"
+    openclaw_service_manager: str = "manual"
+
     # Logging
     log_level: str = "INFO"
     

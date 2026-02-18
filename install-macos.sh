@@ -66,6 +66,8 @@ cat > "$PLIST_PATH" << EOF
     <dict>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+        <key>OPENCLAW_SERVICE_MANAGER</key>
+        <string>launchd</string>
     </dict>
 </dict>
 </plist>
@@ -84,18 +86,23 @@ if curl -s --max-time 2 http://127.0.0.1:8080/health > /dev/null 2>&1; then
     echo ""
     echo "✅ OpenClaw Hub installed successfully!"
     echo ""
-    echo "Service Status:"
-    launchctl list | grep openclaw.hub || echo "  (service loaded)"
-    echo ""
     echo "📊 Dashboard: http://127.0.0.1:8080/docs"
     echo "📝 Logs:      tail -f $LOG_PATH"
     echo ""
-    echo "The Hub will now start automatically on system boot."
+    echo "The Hub will now start automatically on login and restart if it crashes."
     echo ""
-    echo "Commands:"
-    echo "  Start:   launchctl load ~/Library/LaunchAgents/$PLIST_NAME.plist"
-    echo "  Stop:    launchctl unload ~/Library/LaunchAgents/$PLIST_NAME.plist"
-    echo "  Restart: launchctl unload ~/Library/LaunchAgents/$PLIST_NAME.plist && launchctl load ~/Library/LaunchAgents/$PLIST_NAME.plist"
+    echo "┌─────────────────────────────────────────────────────────────────┐"
+    echo "│  ⚠️  SERVICE MANAGEMENT — IMPORTANT                             │"
+    echo "│                                                                 │"
+    echo "│  The Hub is managed by launchd. Use these commands:            │"
+    echo "│                                                                 │"
+    echo "│  Stop:    launchctl unload ~/Library/LaunchAgents/$PLIST_NAME.plist  │"
+    echo "│  Start:   launchctl load  ~/Library/LaunchAgents/$PLIST_NAME.plist   │"
+    echo "│  Status:  launchctl list | grep $PLIST_NAME                    │"
+    echo "│                                                                 │"
+    echo "│  ❌ Do NOT use: pkill, kill, or nohup                          │"
+    echo "│     launchd will immediately respawn any killed process.       │"
+    echo "└─────────────────────────────────────────────────────────────────┘"
 else
     echo ""
     echo "⚠️  Service installed but health check failed."

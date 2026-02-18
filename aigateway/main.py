@@ -61,10 +61,34 @@ app.include_router(github_router, tags=["github"])
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    service_manager = settings.openclaw_service_manager
+
+    # Provide the correct restart instructions based on how the Hub is managed
+    restart_instructions = {
+        "launchd": {
+            "stop": "launchctl unload ~/Library/LaunchAgents/com.openclaw.hub.plist",
+            "start": "launchctl load ~/Library/LaunchAgents/com.openclaw.hub.plist",
+            "warning": "Do NOT use pkill — launchd will immediately respawn the process.",
+        },
+        "systemd": {
+            "stop": "systemctl --user stop openclaw-hub",
+            "start": "systemctl --user start openclaw-hub",
+            "restart": "systemctl --user restart openclaw-hub",
+            "warning": "Do NOT kill the process directly — use systemctl to manage the service.",
+        },
+        "manual": {
+            "note": "Hub is not running under a service manager. Manual process management applies.",
+        },
+    }.get(service_manager, {})
+
     return JSONResponse({
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "0.1.0"
+        "version": "0.1.0",
+        "service": {
+            "managed_by": service_manager,
+            **restart_instructions,
+        },
     })
 
 
