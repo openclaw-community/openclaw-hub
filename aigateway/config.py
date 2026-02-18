@@ -2,8 +2,17 @@
 Configuration management for AI Gateway
 """
 
+import logging
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+# Resolve .env path relative to this file's location so it loads correctly
+# regardless of the working directory when uvicorn is launched.
+_ENV_FILE = Path(__file__).parent.parent / ".env"
+
+if not _ENV_FILE.exists():
+    logging.warning(f"[config] .env file not found at {_ENV_FILE} — credentials will not be loaded")
 
 
 class Settings(BaseSettings):
@@ -40,7 +49,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     
     class Config:
-        env_file = ".env"
+        env_file = str(_ENV_FILE)
         env_file_encoding = "utf-8"
 
 
