@@ -6,7 +6,11 @@ All functions are async — they use AsyncSession.
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select, desc, text, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from aigateway.storage.models import Request, Connection, CostConfig, BudgetLimit
+from aigateway.storage.models import Request, Connection, CostConfig, BudgetLimit, ApiCall
+
+# Services whose traffic is recorded in the `requests` table (LLM completions).
+# All other services are recorded in the `api_calls` table.
+LLM_PROVIDER_SERVICES = {'openai', 'anthropic', 'ollama', 'openrouter', 'lmstudio', 'custom'}
 from aigateway.dashboard.crypto import get_or_create_secret_key, mask_value, decrypt_value
 
 
@@ -151,16 +155,27 @@ async def get_connections(db: AsyncSession) -> list:
     output = []
 
     for conn in connections:
-        # Get stats from requests table using provider name matching the connection's service
-        req_result = await db.execute(
-            select(
-                func.count(Request.id).label("total"),
-                func.sum(case((Request.success == False, 1), else_=0)).label("errors"),
-                func.avg(Request.latency_ms).label("avg_latency")
+        # LLM providers log to the `requests` table; all others log to `api_calls`.
+        if conn.service in LLM_PROVIDER_SERVICES:
+            req_result = await db.execute(
+                select(
+                    func.count(Request.id).label("total"),
+                    func.sum(case((Request.success == False, 1), else_=0)).label("errors"),
+                    func.avg(Request.latency_ms).label("avg_latency"),
+                )
+                .where(Request.provider == conn.service)
+                .where(Request.timestamp >= since_24h)
             )
-            .where(Request.provider == conn.service)
-            .where(Request.timestamp >= since_24h)
-        )
+        else:
+            req_result = await db.execute(
+                select(
+                    func.count(ApiCall.id).label("total"),
+                    func.sum(case((ApiCall.success == False, 1), else_=0)).label("errors"),
+                    func.avg(ApiCall.latency_ms).label("avg_latency"),
+                )
+                .where(ApiCall.service == conn.service)
+                .where(ApiCall.timestamp >= since_24h)
+            )
         req_row = req_result.one()
 
         # Compute health status
@@ -240,6 +255,89 @@ async def get_budget_limits(db: AsyncSession) -> dict:
         "weekly_limit_usd": row.weekly_limit_usd,
         "monthly_limit_usd": row.monthly_limit_usd
     }
+
+
+async def get_recent_api_calls(db: AsyncSession, limit: int = 50) -> list:
+    """Most recent N non-LLM API calls ordered by timestamp DESC."""
+    result = await db.execute(
+        select(ApiCall)
+        .order_by(desc(ApiCall.timestamp))
+        .limit(min(limit, 200))
+    )
+    rows = result.scalars().all()
+    return [{
+        "id": str(r.id),
+        "created_at": r.timestamp.isoformat() + "Z" if r.timestamp else None,
+        "service": r.service,
+        "operation": r.operation,
+        "endpoint": r.endpoint or "",
+        "method": r.method or "GET",
+        "status_code": r.status_code,
+        "cost_usd": round(r.cost_usd or 0.0, 6),
+        "latency_ms": r.latency_ms or 0,
+        "success": r.success,
+        "error": r.error,
+    } for r in rows]
+
+
+async def get_api_call_count_24h(db: AsyncSession) -> int:
+    """Count of non-LLM API calls in the last 24 hours."""
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    result = await db.execute(
+        select(func.count(ApiCall.id)).where(ApiCall.timestamp >= since)
+    )
+    return result.scalar() or 0
+
+
+async def get_api_calls_by_service_daily(db: AsyncSession, days: int = 30) -> list:
+    """Non-LLM API call counts aggregated by day and service for the last N days."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    result = await db.execute(
+        select(
+            func.date(ApiCall.timestamp).label("date"),
+            ApiCall.service,
+            func.count(ApiCall.id).label("total_requests"),
+        )
+        .where(ApiCall.timestamp >= since)
+        .group_by(func.date(ApiCall.timestamp), ApiCall.service)
+        .order_by(func.date(ApiCall.timestamp).asc())
+    )
+    rows = result.all()
+    return [{"date": str(r.date), "service": r.service, "total_requests": r.total_requests} for r in rows]
+
+
+async def get_api_calls_by_service_weekly(db: AsyncSession, weeks: int = 12) -> list:
+    """Non-LLM API call counts aggregated by ISO week and service."""
+    since = datetime.now(timezone.utc) - timedelta(weeks=weeks)
+    result = await db.execute(
+        select(
+            func.strftime('%Y-W%W', ApiCall.timestamp).label("week"),
+            ApiCall.service,
+            func.count(ApiCall.id).label("total_requests"),
+        )
+        .where(ApiCall.timestamp >= since)
+        .group_by(func.strftime('%Y-W%W', ApiCall.timestamp), ApiCall.service)
+        .order_by(func.strftime('%Y-W%W', ApiCall.timestamp).asc())
+    )
+    rows = result.all()
+    return [{"week": r.week, "service": r.service, "total_requests": r.total_requests} for r in rows]
+
+
+async def get_api_calls_by_service_monthly(db: AsyncSession, months: int = 6) -> list:
+    """Non-LLM API call counts aggregated by month and service."""
+    since = datetime.now(timezone.utc) - timedelta(days=months * 30)
+    result = await db.execute(
+        select(
+            func.strftime('%Y-%m', ApiCall.timestamp).label("month"),
+            ApiCall.service,
+            func.count(ApiCall.id).label("total_requests"),
+        )
+        .where(ApiCall.timestamp >= since)
+        .group_by(func.strftime('%Y-%m', ApiCall.timestamp), ApiCall.service)
+        .order_by(func.strftime('%Y-%m', ApiCall.timestamp).asc())
+    )
+    rows = result.all()
+    return [{"month": r.month, "service": r.service, "total_requests": r.total_requests} for r in rows]
 
 
 async def get_estimated_costs(db: AsyncSession, period: str = "daily") -> dict:

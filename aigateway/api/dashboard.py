@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aigateway.dashboard import data
 from aigateway.dashboard.crypto import get_or_create_secret_key, encrypt_value
 from aigateway.storage.database import get_session
-from aigateway.storage.models import BudgetLimit, Connection, CostConfig, Request
+from aigateway.storage.models import BudgetLimit, Connection, CostConfig, Request, ApiCall
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -184,6 +184,7 @@ def _remove_env_for_connection(service: str) -> bool:
 async def get_stats(db: AsyncSession = Depends(get_session)):
     """Aggregated 24-hour stats plus budget snapshot."""
     stats_24h = await data.get_request_stats_24h(db)
+    api_calls_24h = await data.get_api_call_count_24h(db)
     daily_cost = await data.get_estimated_costs(db, "daily")
     weekly_cost = await data.get_estimated_costs(db, "weekly")
     monthly_cost = await data.get_estimated_costs(db, "monthly")
@@ -204,9 +205,14 @@ async def get_stats(db: AsyncSession = Depends(get_session)):
     weekly_spent = weekly_cost["estimated_cost_usd"]
     monthly_spent = monthly_cost["estimated_cost_usd"]
 
+    llm_requests_24h = stats_24h["total_requests"]
+    total_requests_24h = llm_requests_24h + api_calls_24h
+
     return {
         "tokens_today": stats_24h["total_prompt_tokens"] + stats_24h["total_completion_tokens"],
-        "requests_24h": stats_24h["total_requests"],
+        "requests_24h": total_requests_24h,       # LLM + non-LLM combined
+        "llm_requests_24h": llm_requests_24h,     # LLM completions only
+        "api_calls_24h": api_calls_24h,           # non-LLM API calls only
         "errors_24h": stats_24h["total_errors"],
         "estimated_daily_cost_usd": daily_spent,
         "active_connections": active_connections,
@@ -230,27 +236,57 @@ async def get_usage(
     period: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
     db: AsyncSession = Depends(get_session),
 ):
-    """Token usage pivoted by date/week/month and provider."""
+    """
+    Token usage and request counts pivoted by date/week/month.
+
+    Returns:
+    - data[].by_provider: token counts per LLM provider (for token chart)
+    - data[].requests_by_service: request counts per service (LLM + non-LLM combined)
+    """
     if period == "daily":
-        raw = await data.get_token_usage_daily(db)
+        raw_tokens = await data.get_token_usage_daily(db)
+        raw_api = await data.get_api_calls_by_service_daily(db)
         date_key = "date"
     elif period == "weekly":
-        raw = await data.get_token_usage_weekly(db)
+        raw_tokens = await data.get_token_usage_weekly(db)
+        raw_api = await data.get_api_calls_by_service_weekly(db)
         date_key = "week"
     else:
-        raw = await data.get_token_usage_monthly(db)
+        raw_tokens = await data.get_token_usage_monthly(db)
+        raw_api = await data.get_api_calls_by_service_monthly(db)
         date_key = "month"
 
-    grouped: dict = defaultdict(lambda: {"by_provider": {}, "total": 0})
-    for row in raw:
+    # Build token chart data (existing behaviour)
+    grouped: dict = defaultdict(lambda: {"by_provider": {}, "total": 0, "requests_by_service": {}})
+    for row in raw_tokens:
         key = row[date_key]
         provider = row["provider"]
         tokens = row["total_tokens"]
         grouped[key]["by_provider"][provider] = tokens
         grouped[key]["total"] += tokens
+        # Also count LLM completions as requests per provider
+        grouped[key]["requests_by_service"][provider] = (
+            grouped[key]["requests_by_service"].get(provider, 0) + 1
+        )
+
+    # Merge non-LLM API call counts into requests_by_service
+    for row in raw_api:
+        key = row[date_key]
+        service = row["service"]
+        count = row["total_requests"]
+        if key not in grouped:
+            grouped[key] = {"by_provider": {}, "total": 0, "requests_by_service": {}}
+        grouped[key]["requests_by_service"][service] = (
+            grouped[key]["requests_by_service"].get(service, 0) + count
+        )
 
     data_out = [
-        {date_key: k, "by_provider": v["by_provider"], "total": v["total"]}
+        {
+            date_key: k,
+            "by_provider": v["by_provider"],
+            "total": v["total"],
+            "requests_by_service": v["requests_by_service"],
+        }
         for k, v in sorted(grouped.items())
     ]
     return {"period": period, "data": data_out}
@@ -261,9 +297,19 @@ async def get_requests(
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_session),
 ):
-    """Recent requests ordered by timestamp DESC."""
+    """Recent LLM completion requests ordered by timestamp DESC."""
     requests = await data.get_recent_requests(db, limit=limit)
     return {"requests": requests}
+
+
+@router.get("/api-calls")
+async def get_api_calls(
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_session),
+):
+    """Recent non-LLM API calls (GitHub, social, etc.) ordered by timestamp DESC."""
+    calls = await data.get_recent_api_calls(db, limit=limit)
+    return {"api_calls": calls}
 
 
 # ---------------------------------------------------------------------------

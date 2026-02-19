@@ -391,10 +391,12 @@ let statsData = null;
 let usageData = {};
 let connectionsData = [];
 let requestsData = [];
+let apiCallsData = [];   // non-LLM API calls (github, social, etc.)
 let costsData = [];
 let budgetData = null;
 
 let tokenChart = null;
+let serviceChart = null; // requests-by-service bar chart
 let pieChart = null;
 let costChart = null;
 
@@ -432,6 +434,11 @@ async function loadConnections() {
 async function loadRequests(limit = 50) {
     const data = await apiFetch(`/api/dashboard/requests?limit=${limit}`);
     if (data) requestsData = data.requests;
+}
+
+async function loadApiCalls(limit = 50) {
+    const data = await apiFetch(`/api/dashboard/api-calls?limit=${limit}`);
+    if (data) apiCallsData = data.api_calls;
 }
 
 async function loadCosts() {
@@ -505,6 +512,8 @@ function renderOverview() {
     const budget = s.budget || {};
     const tokens = s.tokens_today || 0;
     const reqs = s.requests_24h || 0;
+    const llmReqs = s.llm_requests_24h || 0;
+    const apiReqs = s.api_calls_24h || 0;
     const errors = s.errors_24h || 0;
     const cost = s.estimated_daily_cost_usd || 0;
     const active = s.active_connections || 0;
@@ -525,7 +534,7 @@ function renderOverview() {
 
     const statCards = [
         { icon: ICONS.zap,      label: 'Tokens Today',    value: formatNum(tokens),      sub: 'Across all providers',              color: '#22d3ee' },
-        { icon: ICONS.activity, label: 'Requests (24h)',  value: reqs.toLocaleString(),  sub: `${errors} errors`,                  color: '#34d399' },
+        { icon: ICONS.activity, label: 'Requests (24h)',  value: reqs.toLocaleString(),  sub: `${llmReqs} LLM · ${apiReqs} API calls`, color: '#34d399' },
         { icon: ICONS.dollar,   label: 'Est. Daily Cost', value: '$' + cost.toFixed(2),  sub: `Budget: $${budget.daily_limit || 5}`, color: '#fbbf24' },
         { icon: ICONS.server,   label: 'Connections',     value: String(active),         sub: `${total} configured`,               color: '#a78bfa' },
     ].map(({ icon, label, value, sub, color }) => `
@@ -561,7 +570,7 @@ function renderOverview() {
             ${alertBanner}
             <div class="stat-grid">${statCards}</div>
 
-            <div class="card" style="margin-bottom:28px">
+            <div class="card" style="margin-bottom:16px">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
                     <h3 style="margin:0;font-size:15px;font-weight:700">Token Usage</h3>
                     <div class="tab-bar">
@@ -570,7 +579,15 @@ function renderOverview() {
                         <button class="tab-btn ${currentPeriod === 'monthly' ? 'active' : ''}" onclick="switchPeriod('monthly')">Month</button>
                     </div>
                 </div>
-                <div style="height:280px"><canvas id="tokenChart"></canvas></div>
+                <div style="height:240px"><canvas id="tokenChart"></canvas></div>
+            </div>
+
+            <div class="card" style="margin-bottom:28px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                    <h3 style="margin:0;font-size:15px;font-weight:700">Requests by Service</h3>
+                    <span style="font-size:12px;color:var(--text-dim)">LLM completions + API calls</span>
+                </div>
+                <div style="height:200px"><canvas id="serviceChart"></canvas></div>
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -588,6 +605,7 @@ function renderOverview() {
     `;
 
     renderTokenChart();
+    renderServiceChart();
     renderPieChart();
 }
 
@@ -640,6 +658,55 @@ function renderTokenChart() {
             scales: {
                 x: { stacked: true, ticks: { color: '#556677', font: { size: 11 } }, grid: { color: '#1e2d3d' }, border: { color: '#1e2d3d' } },
                 y: { stacked: true, ticks: { color: '#556677', font: { size: 11 }, callback: v => formatNum(v) }, grid: { color: '#1e2d3d' }, border: { display: false } }
+            }
+        }
+    });
+}
+
+function renderServiceChart() {
+    const canvas = document.getElementById('serviceChart');
+    if (!canvas) return;
+    if (serviceChart) { serviceChart.destroy(); serviceChart = null; }
+
+    const raw = usageData[currentPeriod] || [];
+    const services = [...new Set(raw.flatMap(d => Object.keys(d.requests_by_service || {})))];
+    const dateKey = currentPeriod === 'daily' ? 'date' : currentPeriod === 'weekly' ? 'week' : 'month';
+    const labels = raw.map(d => d[dateKey]);
+
+    const serviceColors = {
+        ollama: '#34d399', openai: '#22d3ee', anthropic: '#a78bfa',
+        github: '#e2e8f0', late: '#fbbf24', s3: '#fb923c',
+        elevenlabs: '#f472b6', kie: '#38bdf8',
+    };
+
+    const datasets = services.map(s => ({
+        label: s.charAt(0).toUpperCase() + s.slice(1),
+        data: raw.map(d => (d.requests_by_service || {})[s] || 0),
+        backgroundColor: serviceColors[s] || '#8899aa',
+        stack: 'reqs',
+    }));
+
+    if (datasets.length === 0) {
+        datasets.push({ label: 'No data', data: [], backgroundColor: '#1e2d3d', stack: 'reqs' });
+    }
+
+    serviceChart = new Chart(canvas, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#8899aa', font: { size: 12 } } },
+                tooltip: {
+                    backgroundColor: '#111827', borderColor: '#1e2d3d', borderWidth: 1,
+                    titleColor: '#e2e8f0', bodyColor: '#8899aa', cornerRadius: 8,
+                    callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} requests` }
+                }
+            },
+            scales: {
+                x: { stacked: true, ticks: { color: '#556677', font: { size: 11 } }, grid: { color: '#1e2d3d' }, border: { color: '#1e2d3d' } },
+                y: { stacked: true, ticks: { color: '#556677', font: { size: 11 } }, grid: { color: '#1e2d3d' }, border: { display: false } }
             }
         }
     });
@@ -710,6 +777,7 @@ async function switchPeriod(period) {
         );
     });
     renderTokenChart();
+    renderServiceChart();
 }
 
 // ============================================================
@@ -717,39 +785,69 @@ async function switchPeriod(period) {
 // ============================================================
 
 function renderActivity() {
-    const rows = requestsData.length === 0
-        ? `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-dim)">No requests recorded yet</td></tr>`
-        : requestsData.map(r => {
-            const statusHtml = r.status === 'success'
-                ? `<span style="color:var(--green);display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600">${ICONS.check} OK</span>`
-                : `<span style="color:var(--red);display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600">${ICONS.x} ERR</span>`;
-            const latencyColor = r.latency_ms > 2000 ? 'color:var(--yellow)' : 'color:var(--text-muted)';
-            return `<tr>
-                <td style="padding:12px 16px;font-family:'JetBrains Mono',monospace;color:var(--text-dim)">${formatTime(r.created_at)}</td>
-                <td style="padding:12px 16px;font-family:'JetBrains Mono',monospace;font-weight:500">${r.model || '—'}</td>
-                <td style="padding:12px 16px;text-align:right">${serviceBadge(r.provider || 'custom')}</td>
-                <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${(r.prompt_tokens || 0).toLocaleString()}</td>
-                <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${(r.completion_tokens || 0).toLocaleString()}</td>
-                <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${formatCost(r.cost_usd)}</td>
-                <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace;${latencyColor}">${r.status === 'error' ? '—' : formatLatency(r.latency_ms)}</td>
-                <td style="padding:12px 16px;text-align:right">${statusHtml}</td>
-            </tr>`;
+    // Merge LLM completions + non-LLM API calls into one chronological feed
+    const llmRows = requestsData.map(r => ({ ...r, _type: 'llm' }));
+    const apiRows = apiCallsData.map(r => ({ ...r, _type: 'api' }));
+    const combined = [...llmRows, ...apiRows].sort((a, b) => {
+        const ta = new Date(a.created_at || 0).getTime();
+        const tb = new Date(b.created_at || 0).getTime();
+        return tb - ta; // newest first
+    });
+
+    const rows = combined.length === 0
+        ? `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-dim)">No activity recorded yet</td></tr>`
+        : combined.map(r => {
+            const latencyColor = (r.latency_ms || 0) > 2000 ? 'color:var(--yellow)' : 'color:var(--text-muted)';
+
+            if (r._type === 'llm') {
+                const statusHtml = r.status === 'success'
+                    ? `<span style="color:var(--green);display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600">${ICONS.check} OK</span>`
+                    : `<span style="color:var(--red);display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600">${ICONS.x} ERR</span>`;
+                return `<tr>
+                    <td style="padding:12px 16px;font-family:'JetBrains Mono',monospace;color:var(--text-dim)">${formatTime(r.created_at)}</td>
+                    <td style="padding:12px 16px;font-family:'JetBrains Mono',monospace;font-weight:500">${r.model || '—'}</td>
+                    <td style="padding:12px 16px;text-align:right">${serviceBadge(r.provider || 'custom')}</td>
+                    <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${(r.prompt_tokens || 0).toLocaleString()}</td>
+                    <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${(r.completion_tokens || 0).toLocaleString()}</td>
+                    <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${formatCost(r.cost_usd)}</td>
+                    <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace;${latencyColor}">${r.status === 'error' ? '—' : formatLatency(r.latency_ms)}</td>
+                    <td style="padding:12px 16px;text-align:right">${statusHtml}</td>
+                </tr>`;
+            } else {
+                // Non-LLM API call row
+                const sc = r.status_code || 0;
+                const scColor = sc >= 500 ? 'var(--red)' : sc >= 400 ? 'var(--yellow)' : 'var(--green)';
+                const statusHtml = sc
+                    ? `<span style="color:${scColor};font-size:12px;font-weight:600;font-family:'JetBrains Mono',monospace">${sc}</span>`
+                    : `<span style="color:var(--text-dim);font-size:12px">—</span>`;
+                return `<tr style="opacity:0.9">
+                    <td style="padding:12px 16px;font-family:'JetBrains Mono',monospace;color:var(--text-dim)">${formatTime(r.created_at)}</td>
+                    <td style="padding:12px 16px;font-family:'JetBrains Mono',monospace;font-weight:500;color:var(--text-muted)">${r.operation || '—'}</td>
+                    <td style="padding:12px 16px;text-align:right">${serviceBadge(r.service || 'custom')}</td>
+                    <td style="padding:12px 16px;text-align:right;color:var(--text-dim);font-size:12px" colspan="2">${(r.method || 'GET')} ${r.endpoint || ''}</td>
+                    <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${formatCost(r.cost_usd)}</td>
+                    <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace;${latencyColor}">${formatLatency(r.latency_ms)}</td>
+                    <td style="padding:12px 16px;text-align:right">${statusHtml}</td>
+                </tr>`;
+            }
         }).join('');
 
     document.getElementById('content').innerHTML = `
         <div class="view">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Recent Activity</h2>
-                <button class="btn btn-ghost btn-sm" onclick="refreshActivity()">${ICONS.refresh} Refresh</button>
+                <div style="display:flex;align-items:center;gap:12px">
+                    <span style="font-size:12px;color:var(--text-dim)">${llmRows.length} LLM · ${apiRows.length} API calls</span>
+                    <button class="btn btn-ghost btn-sm" onclick="refreshActivity()">${ICONS.refresh} Refresh</button>
+                </div>
             </div>
             <div class="card" style="padding:0;overflow:hidden">
                 <table class="data-table">
                     <thead><tr style="background:var(--surface-alt)">
                         <th style="text-align:left">Time</th>
-                        <th style="text-align:left">Model</th>
+                        <th style="text-align:left">Model / Operation</th>
                         <th style="text-align:right">Service</th>
-                        <th style="text-align:right">Prompt</th>
-                        <th style="text-align:right">Completion</th>
+                        <th style="text-align:right" colspan="2">Details</th>
                         <th style="text-align:right">Cost</th>
                         <th style="text-align:right">Latency</th>
                         <th style="text-align:right">Status</th>
@@ -762,7 +860,7 @@ function renderActivity() {
 }
 
 async function refreshActivity() {
-    await loadRequests(50);
+    await Promise.all([loadRequests(50), loadApiCalls(50)]);
     renderActivity();
 }
 
@@ -1552,7 +1650,7 @@ async function refreshView(view) {
         await Promise.all([loadStats(), loadBudget(), loadCosts(), loadUsage('daily')]);
         renderCosts();
     } else if (view === 'activity') {
-        await loadRequests(50);
+        await Promise.all([loadRequests(50), loadApiCalls(50)]);
         renderActivity();
     }
 }
@@ -1574,7 +1672,7 @@ function renderHeader() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     renderSidebar();
-    await Promise.all([loadStats(), loadUsage('daily'), loadConnections(), loadRequests(50)]);
+    await Promise.all([loadStats(), loadUsage('daily'), loadConnections(), loadRequests(50), loadApiCalls(50)]);
     renderHeader();
     renderOverview();
 });
