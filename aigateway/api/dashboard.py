@@ -17,6 +17,7 @@ from aigateway.dashboard import data
 from aigateway.dashboard.crypto import get_or_create_secret_key, encrypt_value
 from aigateway.storage.database import get_session
 from aigateway.storage.models import BudgetLimit, Connection, CostConfig, Request, ApiCall
+from aigateway.dashboard.data import create_default_cost_entries, _period_reset_utc
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -182,7 +183,7 @@ def _remove_env_for_connection(service: str) -> bool:
 
 @router.get("/stats")
 async def get_stats(db: AsyncSession = Depends(get_session)):
-    """Aggregated 24-hour stats plus budget snapshot."""
+    """Aggregated 24-hour stats plus budget snapshot and blocked connection list."""
     stats_24h = await data.get_request_stats_24h(db)
     api_calls_24h = await data.get_api_call_count_24h(db)
     daily_cost = await data.get_estimated_costs(db, "daily")
@@ -208,11 +209,47 @@ async def get_stats(db: AsyncSession = Depends(get_session)):
     llm_requests_24h = stats_24h["total_requests"]
     total_requests_24h = llm_requests_24h + api_calls_24h
 
+    # Build blocked_connections list for the banner
+    connections_data = await data.get_connections(db)
+    blocked_connections = [
+        {
+            "id": c["id"],
+            "name": c["name"],
+            "service": c["service"],
+            "reason": c["budget_blocked_reason"],
+            "limit_usd": c.get(f'{c["budget_blocked_reason"]}_limit_usd') if c.get("budget_blocked_reason") else None,
+            "spent_usd": c.get(f'{c["budget_blocked_reason"]}_spent_usd') if c.get("budget_blocked_reason") else None,
+            "resets_at": c["budget_resets_at"],
+        }
+        for c in connections_data if c.get("budget_blocked")
+    ]
+
+    # Warning connections: any period >= 70% but not yet blocked
+    warning_connections = []
+    for c in connections_data:
+        if c.get("budget_blocked"):
+            continue
+        for period in ("daily", "weekly", "monthly"):
+            limit = c.get(f"{period}_limit_usd")
+            spent = c.get(f"{period}_spent_usd", 0.0)
+            if limit and limit > 0 and (spent / limit) >= 0.70:
+                warning_connections.append({
+                    "id": c["id"],
+                    "name": c["name"],
+                    "service": c["service"],
+                    "period": period,
+                    "pct": round(spent / limit * 100, 1),
+                    "spent_usd": spent,
+                    "limit_usd": limit,
+                    "resets_at": data._period_reset_utc(period).isoformat().replace("+00:00", "Z"),
+                })
+                break  # Report only the most-urgent period per connection
+
     return {
         "tokens_today": stats_24h["total_prompt_tokens"] + stats_24h["total_completion_tokens"],
-        "requests_24h": total_requests_24h,       # LLM + non-LLM combined
-        "llm_requests_24h": llm_requests_24h,     # LLM completions only
-        "api_calls_24h": api_calls_24h,           # non-LLM API calls only
+        "requests_24h": total_requests_24h,
+        "llm_requests_24h": llm_requests_24h,
+        "api_calls_24h": api_calls_24h,
         "errors_24h": stats_24h["total_errors"],
         "estimated_daily_cost_usd": daily_spent,
         "active_connections": active_connections,
@@ -228,6 +265,8 @@ async def get_stats(db: AsyncSession = Depends(get_session)):
             "monthly_spent": monthly_spent,
             "monthly_pct": round((monthly_spent / monthly_limit * 100) if monthly_limit > 0 else 0, 1),
         },
+        "blocked_connections": blocked_connections,
+        "warning_connections": warning_connections,
     }
 
 
@@ -329,9 +368,13 @@ class ConnectionCreate(BaseModel):
 class ConnectionUpdate(BaseModel):
     name: Optional[str] = None
     base_url: Optional[str] = None
-    api_key: Optional[str] = None   # empty string = keep existing
-    token: Optional[str] = None     # empty string = keep existing
+    api_key: Optional[str] = None       # empty string = keep existing
+    token: Optional[str] = None         # empty string = keep existing
     cred_path: Optional[str] = None
+    # Budget limits — use -1 as sentinel for "remove limit" (set to null)
+    daily_limit_usd: Optional[float] = None
+    weekly_limit_usd: Optional[float] = None
+    monthly_limit_usd: Optional[float] = None
 
 
 @router.get("/connections")
@@ -368,6 +411,11 @@ async def create_connection(body: ConnectionCreate, db: AsyncSession = Depends(g
     )
 
     print(f'[DASHBOARD] Connection created: name="{conn.name}", service="{conn.service}" (id={conn.id})')
+
+    # Auto-create $0.00 cost entries for this connection
+    created_models = await create_default_cost_entries(db, conn.id, conn.service)
+    if created_models:
+        print(f'[DASHBOARD] Auto-created cost entries for connection {conn.id}: {created_models}')
 
     msg = "Connection created successfully"
     if restart_required:
@@ -415,6 +463,16 @@ async def update_connection(
     if body.cred_path is not None:
         conn.cred_path = body.cred_path
         updated_fields.append("cred_path")
+    # Budget limits: -1 means "remove limit" (set to null); any other float sets it
+    if body.daily_limit_usd is not None:
+        conn.daily_limit_usd = None if body.daily_limit_usd < 0 else body.daily_limit_usd
+        updated_fields.append("daily_limit_usd")
+    if body.weekly_limit_usd is not None:
+        conn.weekly_limit_usd = None if body.weekly_limit_usd < 0 else body.weekly_limit_usd
+        updated_fields.append("weekly_limit_usd")
+    if body.monthly_limit_usd is not None:
+        conn.monthly_limit_usd = None if body.monthly_limit_usd < 0 else body.monthly_limit_usd
+        updated_fields.append("monthly_limit_usd")
 
     await db.commit()
 
@@ -469,6 +527,49 @@ async def toggle_connection(conn_id: int, db: AsyncSession = Depends(get_session
     await db.commit()
     state = "enabled" if conn.enabled else "disabled"
     return {"id": conn.id, "enabled": conn.enabled, "message": f"Connection '{conn.name}' {state}"}
+
+
+@router.post("/connections/{conn_id}/budget-override")
+async def budget_override(conn_id: int, db: AsyncSession = Depends(get_session)):
+    """
+    Temporarily suspend budget enforcement for a connection until the next period reset.
+    Sets budget_override_until to the next reset of the earliest exceeded budget period.
+    The UI should confirm this action with a checkbox before calling this endpoint.
+    """
+    result = await db.execute(select(Connection).where(Connection.id == conn_id))
+    conn = result.scalar_one_or_none()
+    if not conn:
+        raise HTTPException(status_code=404, detail=f"Connection {conn_id} not found")
+
+    # Find earliest exceeded period to determine the override expiry
+    from aigateway.dashboard.data import get_spend_by_connection, _compute_budget_status
+    spend_by_service = await get_spend_by_connection(db)
+    spend = spend_by_service.get(conn.service, {"daily": 0.0, "weekly": 0.0, "monthly": 0.0})
+
+    # Find all exceeded periods and pick the earliest reset
+    exceeded = []
+    if conn.daily_limit_usd is not None and spend.get("daily", 0) >= conn.daily_limit_usd:
+        exceeded.append("daily")
+    if conn.weekly_limit_usd is not None and spend.get("weekly", 0) >= conn.weekly_limit_usd:
+        exceeded.append("weekly")
+    if conn.monthly_limit_usd is not None and spend.get("monthly", 0) >= conn.monthly_limit_usd:
+        exceeded.append("monthly")
+
+    if not exceeded:
+        raise HTTPException(status_code=400, detail="Connection is not currently budget-blocked")
+
+    # Override until the earliest reset (gives the shortest override window)
+    override_until = min(_period_reset_utc(p) for p in exceeded)
+    conn.budget_override_until = override_until.replace(tzinfo=None)  # store as naive UTC
+    await db.commit()
+
+    override_iso = override_until.isoformat().replace("+00:00", "Z")
+    print(f'[DASHBOARD] Budget override set for connection {conn_id} until {override_iso}')
+    return {
+        "id": conn_id,
+        "override_until": override_iso,
+        "message": f"Budget override active until {override_iso}",
+    }
 
 
 @router.post("/connections/import-env", status_code=200)
@@ -539,6 +640,19 @@ async def import_connections_from_env(db: AsyncSession = Depends(get_session)):
     if imported:
         await db.commit()
 
+        # Auto-create $0.00 cost entries for each newly imported connection
+        # We need the IDs of the connections we just created — re-query by service names
+        for mapping in ENV_IMPORT_MAP:
+            if mapping["name"] in imported:
+                conn_result = await db.execute(
+                    select(Connection).where(Connection.service == mapping["service"]).order_by(Connection.id.desc()).limit(1)
+                )
+                new_conn = conn_result.scalar_one_or_none()
+                if new_conn:
+                    created_models = await create_default_cost_entries(db, new_conn.id, new_conn.service)
+                    if created_models:
+                        print(f'[DASHBOARD] Auto-created cost entries for imported connection {new_conn.id}: {created_models}')
+
     count_i = len(imported)
     count_s = len(skipped)
     parts = []
@@ -603,6 +717,7 @@ async def get_health(db: AsyncSession = Depends(get_session)):
 class CostConfigCreate(BaseModel):
     model: str
     provider: str
+    connection_id: Optional[int] = None
     input_cost_per_million: float = 0.0
     output_cost_per_million: float = 0.0
 
@@ -625,6 +740,7 @@ async def create_cost_config(body: CostConfigCreate, db: AsyncSession = Depends(
     config = CostConfig(
         model=body.model,
         provider=body.provider,
+        connection_id=body.connection_id,
         input_cost_per_million=body.input_cost_per_million,
         output_cost_per_million=body.output_cost_per_million,
     )
