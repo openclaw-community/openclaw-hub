@@ -33,3 +33,4 @@ aigateway.db
 GITHUB.md
 *.log
 hub.pid
+.startup_state.json

@@ -645,6 +645,31 @@ function navControlsHtml() {
     </div>`;
 }
 
+function restartBannerHtml() {
+    const startup = statsData?.startup;
+    if (!startup?.unexpected_restart) return '';
+    const prev = startup.previous_startup_at ? new Date(startup.previous_startup_at).toLocaleString() : 'unknown';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--yellow-dim);border:1px solid rgba(251,191,36,0.3);border-radius:10px">
+        <span style="color:var(--yellow);flex-shrink:0">⚠️</span>
+        <span style="font-size:13px;color:var(--yellow);font-weight:600">Hub restarted unexpectedly. Previous session started at ${prev}. Check logs for details.</span>
+    </div>`;
+}
+
+function healthBannerHtml() {
+    const degraded = statsData?.degraded_providers || [];
+    if (degraded.length === 0) return '';
+    const names = degraded.map(d => `<strong>${d.provider}</strong> (${d.status})`).join(', ');
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--yellow-dim);border:1px solid rgba(251,191,36,0.3);border-radius:10px">
+        <span style="color:var(--yellow);flex-shrink:0">${ICONS.alert}</span>
+        <span style="font-size:13px;color:var(--yellow);font-weight:600">Degraded: ${names}. Hub is retrying and probing for recovery.</span>
+    </div>`;
+}
+
+function allBannersHtml() {
+    return [restartBannerHtml(), healthBannerHtml(), budgetBannerHtml()]
+        .filter(Boolean).join('');
+}
+
 function statusDot(status) {
     const colors = { healthy: '#34d399', degraded: '#fbbf24', error: '#f87171', offline: '#556677', unknown: '#556677' };
     const color = colors[status] || colors.unknown;
@@ -688,7 +713,7 @@ function renderOverview() {
     const total = s.total_connections || 0;
     const dailyPct = budget.daily_pct || 0;
 
-    const alertBanner = budgetBannerHtml();
+    const alertBanner = allBannersHtml();
 
     const statCards = [
         { icon: ICONS.zap,      label: 'Tokens Today',    value: formatNum(tokens),      sub: 'Across all providers',              color: '#22d3ee' },
@@ -1025,7 +1050,7 @@ function renderActivity() {
 
     document.getElementById('content').innerHTML = `
         <div class="view">
-            ${budgetBannerHtml()}
+            ${allBannersHtml()}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Recent Activity</h2>
                 <div style="display:flex;align-items:center;gap:12px">
@@ -1195,7 +1220,7 @@ function renderConnections() {
 
     document.getElementById('content').innerHTML = `
         <div class="view">
-            ${budgetBannerHtml()}
+            ${allBannersHtml()}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Connections</h2>
                 <div style="display:flex;gap:10px">
@@ -1382,7 +1407,7 @@ function renderCosts() {
 
     document.getElementById('content').innerHTML = `
         <div class="view">
-            ${budgetBannerHtml()}
+            ${allBannersHtml()}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Cost Configuration</h2>
                 <button class="btn btn-ghost btn-sm" onclick="openAddCostModal()">${ICONS.plus} Add Cost Entry</button>
