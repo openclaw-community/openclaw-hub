@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 import structlog
 from datetime import datetime
-from .storage.database import init_database
+from .storage.database import init_database, backfill_provider_column
 from .api.completions import router as completions_router
 from .api.workflows import router as workflows_router
 from .api.mcp import router as mcp_router
@@ -22,6 +22,7 @@ from .orchestration.engine import WorkflowEngine
 from .orchestration.loader import WorkflowLoader
 from .mcp.manager import MCPManager
 from .config import settings
+from .dashboard.crypto import get_or_create_secret_key
 
 # Configure structured logging
 structlog.configure(
@@ -99,7 +100,8 @@ async def root():
         "name": "AI Gateway",
         "version": "0.1.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "dashboard": "http://127.0.0.1:8080/dashboard"
     }
 
 
@@ -112,6 +114,12 @@ async def startup_event():
     
     # Initialize database
     await init_database()
+
+    # Ensure dashboard encryption key exists
+    get_or_create_secret_key()
+
+    # Backfill provider column for existing request rows
+    await backfill_provider_column()
     
     # Initialize provider manager
     provider_manager = ProviderManager(
