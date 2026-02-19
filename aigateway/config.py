@@ -55,6 +55,23 @@ class Settings(BaseSettings):
     # Values: "launchd" | "systemd" | "manual"
     openclaw_service_manager: str = "manual"
 
+    # Self-healing: retry with backoff (Issue #26)
+    retry_enabled: bool = True
+    retry_max_attempts: int = 3
+    retry_backoff_base: float = 1.0       # seconds before first retry
+    retry_backoff_multiplier: float = 5.0 # multiplier per attempt: 1s → 5s → 15s (approx)
+    # Comma-separated HTTP status codes that trigger a retry
+    retry_on_status_codes: str = "429,500,502,503,504"
+
+    # Self-healing: fallback routing (Issue #26)
+    # Format: "primary:fallback,primary2:fallback2" e.g. "openai:anthropic,anthropic:openai"
+    fallback_rules: str = "openai:ollama,anthropic:ollama"
+
+    # Self-healing: health probes (Issue #26)
+    health_probe_enabled: bool = True
+    health_probe_interval_seconds: int = 30    # probe interval for degraded/error connections
+    health_probe_success_threshold: int = 3    # consecutive successes before marking healthy
+
     # Logging
     log_level: str = "INFO"
     

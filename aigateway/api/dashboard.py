@@ -245,6 +245,17 @@ async def get_stats(db: AsyncSession = Depends(get_session)):
                 })
                 break  # Report only the most-urgent period per connection
 
+    # Restart detection + provider health
+    from ..main import _startup_info
+    from ..providers.health import tracker as health_tracker
+
+    health_snapshot = health_tracker.snapshot()
+    degraded_providers = [
+        {**{"provider": p}, **v}
+        for p, v in health_snapshot.items()
+        if v["status"] != "healthy"
+    ]
+
     return {
         "tokens_today": stats_24h["total_prompt_tokens"] + stats_24h["total_completion_tokens"],
         "requests_24h": total_requests_24h,
@@ -254,6 +265,9 @@ async def get_stats(db: AsyncSession = Depends(get_session)):
         "estimated_daily_cost_usd": daily_spent,
         "active_connections": active_connections,
         "total_connections": total_connections,
+        "startup": _startup_info,
+        "provider_health": health_snapshot,
+        "degraded_providers": degraded_providers,
         "budget": {
             "daily_limit": daily_limit,
             "daily_spent": daily_spent,
