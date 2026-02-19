@@ -24,8 +24,10 @@ from .api.github import router as github_router
 from .api.usage import router as usage_router
 from .api.dashboard import router as dashboard_router
 from .api.config_status import router as config_status_router
+from .api.alerts import router as alerts_router
 from .providers.manager import ProviderManager
 from .providers.health import tracker as health_tracker
+from .monitoring.health_monitor import health_monitor_loop
 from .orchestration.engine import WorkflowEngine
 from .orchestration.loader import WorkflowLoader
 from .mcp.manager import MCPManager
@@ -57,6 +59,7 @@ workflow_engine: WorkflowEngine = None
 workflow_loader: WorkflowLoader = None
 mcp_manager: MCPManager = None
 _health_probe_task: asyncio.Task = None
+_health_monitor_task: asyncio.Task = None
 
 # Restart detection: persist last startup time so the next session can detect gaps
 _STARTUP_STATE_FILE = Path(__file__).parent.parent / ".startup_state.json"
@@ -73,6 +76,7 @@ app.include_router(videos_router, tags=["videos"])
 app.include_router(social_router, tags=["social"])
 app.include_router(github_router, tags=["github"])
 app.include_router(dashboard_router)
+app.include_router(alerts_router)
 
 
 @app.get("/dashboard", response_class=FileResponse)
@@ -440,7 +444,7 @@ async def _health_probe_loop():
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global provider_manager, workflow_engine, workflow_loader, mcp_manager, _health_probe_task
+    global provider_manager, workflow_engine, workflow_loader, mcp_manager, _health_probe_task, _health_monitor_task
 
     logger.info("ai_gateway_starting", version="0.1.0")
 
@@ -480,26 +484,33 @@ async def startup_event():
     workflow_loader.load_all()
     logger.info("workflows_loaded", count=len(workflow_loader.workflows))
 
-    # Start background health probe task
+    # Start background health probe task (Issue #26 — self-healing)
     _health_probe_task = asyncio.create_task(_health_probe_loop())
     logger.info("health_probe_task_started",
                 interval_seconds=settings.health_probe_interval_seconds)
+
+    # Start background health monitor task (Issue #29 — push notifications)
+    _health_monitor_task = asyncio.create_task(health_monitor_loop())
+    logger.info("health_monitor_task_started",
+                interval_seconds=settings.alert_check_interval_seconds,
+                enabled=settings.alert_enabled)
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    global provider_manager, mcp_manager, _health_probe_task
+    global provider_manager, mcp_manager, _health_probe_task, _health_monitor_task
 
     logger.info("ai_gateway_shutting_down")
 
-    # Cancel health probe task
-    if _health_probe_task and not _health_probe_task.done():
-        _health_probe_task.cancel()
-        try:
-            await _health_probe_task
-        except asyncio.CancelledError:
-            pass
+    # Cancel background tasks
+    for task in (_health_probe_task, _health_monitor_task):
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     if provider_manager:
         await provider_manager.close_all()

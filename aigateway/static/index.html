@@ -395,6 +395,7 @@ let requestsData = [];
 let apiCallsData = [];   // non-LLM API calls (github, social, etc.)
 let costsData = [];
 let budgetData = null;  // legacy global budget (kept for backward compat)
+let activeAlertsData = [];  // live alerts from /api/alerts/active (Issue #29)
 
 let tokenChart = null;
 let serviceChart = null; // requests-by-service bar chart
@@ -465,6 +466,23 @@ async function loadCosts() {
 
 async function loadBudget() {
     budgetData = await apiFetch('/api/dashboard/budget');
+}
+
+async function loadActiveAlerts() {
+    const data = await apiFetch('/api/alerts/active');
+    if (data) activeAlertsData = data.alerts || [];
+}
+
+async function dismissAlert(alertId) {
+    try {
+        await fetch(`/api/alerts/${encodeURIComponent(alertId)}/dismiss`, { method: 'POST' });
+        await loadActiveAlerts();
+        // Re-render current view to refresh banners
+        const bannerEls = document.querySelectorAll('[data-alert-id]');
+        bannerEls.forEach(el => { if (el.dataset.alertId === alertId) el.remove(); });
+    } catch (e) {
+        console.error('dismiss alert failed:', e);
+    }
 }
 
 // ============================================================
@@ -665,8 +683,37 @@ function healthBannerHtml() {
     </div>`;
 }
 
+function alertsBannerHtml() {
+    if (!activeAlertsData || activeAlertsData.length === 0) return '';
+
+    const SEVERITY_STYLE = {
+        critical: { bg: 'var(--red-dim)',    border: 'rgba(248,113,113,0.35)', color: 'var(--red)',    icon: '🔴' },
+        error:    { bg: 'var(--red-dim)',    border: 'rgba(248,113,113,0.35)', color: 'var(--red)',    icon: '⛔' },
+        warning:  { bg: 'var(--yellow-dim)', border: 'rgba(251,191,36,0.3)',   color: 'var(--yellow)', icon: '⚠️' },
+    };
+
+    const banners = activeAlertsData.map(alert => {
+        const sty = SEVERITY_STYLE[alert.severity] || SEVERITY_STYLE.warning;
+        const tsAgo = alert.created_at ? (() => {
+            const diff = Math.floor((Date.now() - new Date(alert.created_at)) / 60000);
+            return diff < 1 ? 'just now' : diff < 60 ? `${diff}m ago` : `${Math.floor(diff/60)}h ago`;
+        })() : '';
+        return `
+            <div data-alert-id="${alert.id}" style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:${sty.bg};border:1px solid ${sty.border};border-radius:10px">
+                <span style="flex-shrink:0;font-size:16px">${sty.icon}</span>
+                <span style="font-size:13px;color:${sty.color};font-weight:600;flex:1">
+                    ${alert.message}
+                    ${tsAgo ? `<span style="font-weight:400;opacity:0.7;margin-left:6px">${tsAgo}</span>` : ''}
+                </span>
+                <button class="btn btn-sm" style="flex-shrink:0;opacity:0.7" onclick="dismissAlert('${alert.id}')" title="Dismiss">✕</button>
+            </div>`;
+    });
+
+    return `<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">${banners.join('')}</div>`;
+}
+
 function allBannersHtml() {
-    return [restartBannerHtml(), healthBannerHtml(), budgetBannerHtml()]
+    return [restartBannerHtml(), healthBannerHtml(), budgetBannerHtml(), alertsBannerHtml()]
         .filter(Boolean).join('');
 }
 
@@ -750,7 +797,7 @@ function renderOverview() {
     document.getElementById('content').innerHTML = `
         <div class="view">
             <h2 style="margin:0 0 24px;font-size:22px;font-weight:700;letter-spacing:-.02em">Dashboard Overview</h2>
-            ${alertBanner}
+            <div data-banner-container>${alertBanner}</div>
             <div class="stat-grid">${statCards}</div>
 
             <div class="card" style="margin-bottom:16px">
@@ -1050,7 +1097,7 @@ function renderActivity() {
 
     document.getElementById('content').innerHTML = `
         <div class="view">
-            ${allBannersHtml()}
+            <div data-banner-container>${allBannersHtml()}</div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Recent Activity</h2>
                 <div style="display:flex;align-items:center;gap:12px">
@@ -1220,7 +1267,7 @@ function renderConnections() {
 
     document.getElementById('content').innerHTML = `
         <div class="view">
-            ${allBannersHtml()}
+            <div data-banner-container>${allBannersHtml()}</div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Connections</h2>
                 <div style="display:flex;gap:10px">
@@ -1407,7 +1454,7 @@ function renderCosts() {
 
     document.getElementById('content').innerHTML = `
         <div class="view">
-            ${allBannersHtml()}
+            <div data-banner-container>${allBannersHtml()}</div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Cost Configuration</h2>
                 <button class="btn btn-ghost btn-sm" onclick="openAddCostModal()">${ICONS.plus} Add Cost Entry</button>
@@ -2152,7 +2199,7 @@ async function showView(view) {
 
 async function refreshView(view) {
     if (view === 'overview') {
-        await Promise.all([loadStats(), loadUsage(currentPeriod, currentNavDate), loadConnections()]);
+        await Promise.all([loadStats(), loadUsage(currentPeriod, currentNavDate), loadConnections(), loadActiveAlerts()]);
         renderOverview();
     } else if (view === 'connections') {
         await loadConnections();
@@ -2183,9 +2230,20 @@ function renderHeader() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     renderSidebar();
-    await Promise.all([loadStats(), loadUsage('daily', null), loadConnections(), loadRequests(50), loadApiCalls(50)]);
+    await Promise.all([loadStats(), loadUsage('daily', null), loadConnections(), loadRequests(50), loadApiCalls(50), loadActiveAlerts()]);
     renderHeader();
     renderOverview();
+
+    // Poll for active alerts every 30 seconds — updates banners on next view render
+    setInterval(async () => {
+        await loadActiveAlerts();
+        // If currently on a view that renders banners, re-render the banner area in-place
+        // without a full view reload (avoids chart flicker)
+        const bannerContainers = document.querySelectorAll('[data-banner-container]');
+        if (bannerContainers.length > 0) {
+            bannerContainers.forEach(el => { el.innerHTML = allBannersHtml(); });
+        }
+    }, 30000);
 });
     </script>
 </body>

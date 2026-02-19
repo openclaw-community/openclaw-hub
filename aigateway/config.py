@@ -72,6 +72,17 @@ class Settings(BaseSettings):
     health_probe_interval_seconds: int = 30    # probe interval for degraded/error connections
     health_probe_success_threshold: int = 3    # consecutive successes before marking healthy
 
+    # Alert / push notifications (Issue #29)
+    alert_enabled: bool = True
+    alert_check_interval_seconds: int = 60
+    alert_consecutive_error_threshold: int = 3
+    alert_latency_multiplier: float = 2.0          # spike = recent_avg >= baseline_avg * multiplier
+    alert_latency_window_minutes: int = 5          # window for computing "recent" avg latency
+    alert_budget_threshold_percent: float = 90.0   # trigger when this % of daily_limit_usd is spent
+    alert_dedup_window_minutes: int = 15           # suppress repeat alerts within this window
+    alert_webhook_url: Optional[str] = None        # empty/None = disabled
+    alert_desktop_notify: bool = True              # macOS osascript / Linux notify-send
+
     # Logging
     log_level: str = "INFO"
     
