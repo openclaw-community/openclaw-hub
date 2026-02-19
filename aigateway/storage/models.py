@@ -10,6 +10,29 @@ from datetime import datetime
 Base = declarative_base()
 
 
+class ApiCall(Base):
+    """Log of non-LLM API calls through the gateway (GitHub, social, ElevenLabs, etc.)"""
+    __tablename__ = "api_calls"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    service = Column(String, nullable=False, index=True)       # e.g. "github", "late", "elevenlabs"
+    operation = Column(String, nullable=False)                  # e.g. "create_issue", "post_image"
+    endpoint = Column(String, default="")                       # URL path, e.g. "/repos/owner/repo/issues"
+    method = Column(String, default="GET")                      # HTTP method
+    status_code = Column(Integer, nullable=True)                # HTTP response code
+    success = Column(Boolean, default=True)
+    error = Column(Text, nullable=True)                         # Error message / response body on failure
+    latency_ms = Column(Float, nullable=True)                   # Response time in milliseconds
+    request_size_bytes = Column(Integer, nullable=True)
+    response_size_bytes = Column(Integer, nullable=True)
+    cost_usd = Column(Float, default=0.0)                       # Applicable for metered services (e.g. ElevenLabs)
+    metadata_json = Column(Text, default="{}")                  # Flexible JSON for service-specific fields
+    timestamp = Column(DateTime, default=func.now(), index=True)
+
+    def __repr__(self):
+        return f"<ApiCall(id={self.id}, service={self.service}, operation={self.operation}, success={self.success})>"
+
+
 class Request(Base):
     """Log of LLM requests through the gateway"""
     __tablename__ = "requests"

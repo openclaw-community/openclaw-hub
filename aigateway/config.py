@@ -35,8 +35,11 @@ class Settings(BaseSettings):
     # Anthropic (optional)
     anthropic_api_key: Optional[str] = None
     
-    # Late API (Instagram posting - optional)
+    # Late API / getlate.dev (Instagram posting - optional)
+    # The Connections UI writes GETLATE_API_KEY; the legacy env var is LATE_API_KEY.
+    # Both are accepted; GETLATE_API_KEY takes precedence if present.
     late_api_key: Optional[str] = None
+    getlate_api_key: Optional[str] = None
     late_instagram_account_id: Optional[str] = None
     
     # GitHub (optional)
@@ -58,6 +61,8 @@ class Settings(BaseSettings):
     class Config:
         env_file = str(_ENV_FILE)
         env_file_encoding = "utf-8"
+        extra = "ignore"   # Ignore unknown env vars — prevents crashes when the
+                           # Connections UI writes keys not yet declared in Settings
 
 
 # Global settings instance
