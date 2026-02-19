@@ -16,6 +16,7 @@ from .api.social import router as social_router
 from .api.videos import router as videos_router
 from .api.github import router as github_router
 from .api.usage import router as usage_router
+from .api.dashboard import router as dashboard_router
 from .api.config_status import router as config_status_router
 from .providers.manager import ProviderManager
 from .orchestration.engine import WorkflowEngine
@@ -57,6 +58,7 @@ app.include_router(images_router, tags=["images"])
 app.include_router(videos_router, tags=["videos"])
 app.include_router(social_router, tags=["social"])
 app.include_router(github_router, tags=["github"])
+app.include_router(dashboard_router)
 
 
 @app.get("/health")
