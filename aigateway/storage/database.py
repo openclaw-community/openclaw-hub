@@ -19,6 +19,15 @@ engine = create_async_engine(
     future=True
 )
 
+# Enable SQLite foreign-key enforcement on every new connection.
+# Without this PRAGMA, ON DELETE CASCADE has no effect.
+from sqlalchemy import event
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragma(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
 # Create async session factory
 async_session = sessionmaker(
     engine,
@@ -40,8 +49,26 @@ async def init_database():
             await conn.execute(text("ALTER TABLE requests ADD COLUMN provider VARCHAR"))
             logger.info("requests_provider_column_added")
         except Exception:
-            # Column already exists — this is expected on subsequent starts
             pass
+
+        # Per-connection budget columns (Issue #32)
+        for col_def in [
+            "ALTER TABLE connections ADD COLUMN daily_limit_usd FLOAT",
+            "ALTER TABLE connections ADD COLUMN weekly_limit_usd FLOAT",
+            "ALTER TABLE connections ADD COLUMN monthly_limit_usd FLOAT",
+            "ALTER TABLE connections ADD COLUMN budget_override_until DATETIME",
+        ]:
+            try:
+                await conn.execute(text(col_def))
+            except Exception:
+                pass  # Column already exists
+
+        # Add connection_id FK column to cost_configs (Issue #32)
+        try:
+            await conn.execute(text("ALTER TABLE cost_configs ADD COLUMN connection_id INTEGER REFERENCES connections(id) ON DELETE CASCADE"))
+            logger.info("cost_configs_connection_id_column_added")
+        except Exception:
+            pass  # Column already exists
 
     logger.info("database_initialized", url=DATABASE_URL)
 

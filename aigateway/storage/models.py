@@ -2,7 +2,7 @@
 Database models for AI Gateway
 """
 
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text
+from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -81,6 +81,12 @@ class Connection(Base):
     token_encrypted = Column(String, default="")
     cred_path = Column(String, default="")
     enabled = Column(Boolean, default=True)
+    # Per-connection budget limits (null = no limit)
+    daily_limit_usd = Column(Float, nullable=True)
+    weekly_limit_usd = Column(Float, nullable=True)
+    monthly_limit_usd = Column(Float, nullable=True)
+    # When set and > now(), budget enforcement is suspended until this time
+    budget_override_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -93,14 +99,17 @@ class CostConfig(Base):
     __tablename__ = "cost_configs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    model = Column(String, nullable=False, unique=True)
+    # connection_id links this cost entry to a specific Connection row.
+    # Nullable for legacy entries that pre-date connection-scoped costs.
+    connection_id = Column(Integer, ForeignKey("connections.id", ondelete="CASCADE"), nullable=True, index=True)
+    model = Column(String, nullable=False)
     provider = Column(String, nullable=False)
     input_cost_per_million = Column(Float, default=0.0)
     output_cost_per_million = Column(Float, default=0.0)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     def __repr__(self):
-        return f"<CostConfig(model={self.model}, provider={self.provider})>"
+        return f"<CostConfig(model={self.model}, provider={self.provider}, connection_id={self.connection_id})>"
 
 
 class BudgetLimit(Base):

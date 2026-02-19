@@ -147,11 +147,15 @@ async def get_recent_requests(db: AsyncSession, limit: int = 50) -> list:
 
 
 async def get_connections(db: AsyncSession) -> list:
-    """All connections with masked credentials and computed health stats."""
+    """All connections with masked credentials, computed health stats, and budget status."""
     result = await db.execute(select(Connection).order_by(Connection.id))
     connections = result.scalars().all()
 
     since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    # Fetch all spend data in one pass
+    spend_by_service = await get_spend_by_connection(db)
+
     output = []
 
     for conn in connections:
@@ -208,6 +212,9 @@ async def get_connections(db: AsyncSession) -> list:
             except Exception:
                 token_masked = "****"
 
+        spend = spend_by_service.get(conn.service, {"daily": 0.0, "weekly": 0.0, "monthly": 0.0})
+        budget_status = _compute_budget_status(conn, spend)
+
         output.append({
             "id": conn.id,
             "name": conn.name,
@@ -221,18 +228,22 @@ async def get_connections(db: AsyncSession) -> list:
             "status": status,
             "latency_avg_ms": round(avg_latency, 1),
             "requests_24h": total,
-            "errors_24h": error_count
+            "errors_24h": error_count,
+            **budget_status,
         })
 
     return output
 
 
 async def get_cost_configs(db: AsyncSession) -> list:
-    """All cost configurations."""
-    result = await db.execute(select(CostConfig).order_by(CostConfig.provider, CostConfig.model))
+    """All cost configurations, ordered by connection then model."""
+    result = await db.execute(
+        select(CostConfig).order_by(CostConfig.connection_id.nullslast(), CostConfig.provider, CostConfig.model)
+    )
     rows = result.scalars().all()
     return [{
         "id": r.id,
+        "connection_id": r.connection_id,
         "model": r.model,
         "provider": r.provider,
         "input_cost_per_million": r.input_cost_per_million,
@@ -358,3 +369,202 @@ async def get_estimated_costs(db: AsyncSession, period: str = "daily") -> dict:
         "estimated_cost_usd": round(row.total or 0.0, 6),
         "period": period
     }
+
+
+# ---------------------------------------------------------------------------
+# Budget period helpers
+# ---------------------------------------------------------------------------
+
+def _period_start_utc(period: str) -> datetime:
+    """Return the UTC start of the current calendar period (daily/weekly/monthly)."""
+    now = datetime.now(timezone.utc)
+    if period == "daily":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "weekly":
+        # Monday of the current week
+        monday = now - timedelta(days=now.weekday())
+        return monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    else:  # monthly
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _period_reset_utc(period: str) -> datetime:
+    """Return the UTC time when the current period resets (next period start)."""
+    import calendar
+    now = datetime.now(timezone.utc)
+    if period == "daily":
+        return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "weekly":
+        days_until_monday = 7 - now.weekday()
+        return (now + timedelta(days=days_until_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:  # monthly
+        last_day = calendar.monthrange(now.year, now.month)[1]
+        next_month_start = now.replace(day=last_day) + timedelta(days=1)
+        return next_month_start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+async def get_spend_by_connection(db: AsyncSession) -> dict:
+    """
+    Returns per-connection spend for each calendar period (daily/weekly/monthly).
+    Keys are connection service names; values are dicts with daily/weekly/monthly spend in USD.
+
+    Spend is calculated by joining requests against cost_configs on model+provider,
+    then summing (prompt_tokens * input_cost + completion_tokens * output_cost) / 1_000_000.
+    Falls back to Request.cost_usd when no cost config matches.
+    """
+    result = {}
+
+    # Get all connections to initialise the dict
+    conns_result = await db.execute(select(Connection))
+    connections = conns_result.scalars().all()
+    conn_by_service = {c.service: c for c in connections}
+
+    for period in ("daily", "weekly", "monthly"):
+        since = _period_start_utc(period)
+
+        # Sum Request.cost_usd per provider within this period
+        spend_result = await db.execute(
+            select(
+                Request.provider,
+                func.sum(Request.cost_usd).label("total_cost"),
+            )
+            .where(Request.timestamp >= since)
+            .where(Request.provider.isnot(None))
+            .group_by(Request.provider)
+        )
+        for row in spend_result.all():
+            service = row.provider
+            if service not in result:
+                result[service] = {"daily": 0.0, "weekly": 0.0, "monthly": 0.0}
+            result[service][period] = round(row.total_cost or 0.0, 6)
+
+        # Also sum ApiCall.cost_usd per service for non-LLM providers
+        api_spend_result = await db.execute(
+            select(
+                ApiCall.service,
+                func.sum(ApiCall.cost_usd).label("total_cost"),
+            )
+            .where(ApiCall.timestamp >= since)
+            .where(ApiCall.service.isnot(None))
+            .group_by(ApiCall.service)
+        )
+        for row in api_spend_result.all():
+            service = row.service
+            if service not in result:
+                result[service] = {"daily": 0.0, "weekly": 0.0, "monthly": 0.0}
+            result[service][period] = round(
+                result[service].get(period, 0.0) + (row.total_cost or 0.0), 6
+            )
+
+    return result
+
+
+def _compute_budget_status(conn: Connection, spend: dict) -> dict:
+    """
+    Given a Connection row and its spend dict {daily, weekly, monthly},
+    compute budget_blocked, budget_blocked_reason, and override status.
+    Returns a dict of budget fields to merge into the connection response.
+    """
+    now = datetime.now(timezone.utc)
+    daily_spent = spend.get("daily", 0.0)
+    weekly_spent = spend.get("weekly", 0.0)
+    monthly_spent = spend.get("monthly", 0.0)
+
+    # Check override
+    override_active = (
+        conn.budget_override_until is not None
+        and conn.budget_override_until.replace(tzinfo=timezone.utc) > now
+    )
+
+    blocked_periods = []
+    if conn.daily_limit_usd is not None and daily_spent >= conn.daily_limit_usd:
+        blocked_periods.append(("daily", conn.daily_limit_usd, daily_spent))
+    if conn.weekly_limit_usd is not None and weekly_spent >= conn.weekly_limit_usd:
+        blocked_periods.append(("weekly", conn.weekly_limit_usd, weekly_spent))
+    if conn.monthly_limit_usd is not None and monthly_spent >= conn.monthly_limit_usd:
+        blocked_periods.append(("monthly", conn.monthly_limit_usd, monthly_spent))
+
+    budget_blocked = bool(blocked_periods) and not override_active
+    budget_blocked_reason = blocked_periods[0][0] if blocked_periods else None
+
+    # Latest reset time among all blocked periods (most restrictive)
+    latest_reset = None
+    if blocked_periods:
+        latest_reset = max(_period_reset_utc(p[0]) for p in blocked_periods).isoformat() + "Z"
+
+    override_until = None
+    if conn.budget_override_until:
+        override_until = conn.budget_override_until.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+
+    return {
+        "daily_limit_usd": conn.daily_limit_usd,
+        "weekly_limit_usd": conn.weekly_limit_usd,
+        "monthly_limit_usd": conn.monthly_limit_usd,
+        "daily_spent_usd": daily_spent,
+        "weekly_spent_usd": weekly_spent,
+        "monthly_spent_usd": monthly_spent,
+        "budget_blocked": budget_blocked,
+        "budget_blocked_reason": budget_blocked_reason,
+        "budget_resets_at": latest_reset,
+        "budget_override_active": override_active,
+        "budget_override_until": override_until,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Default cost entry creation
+# ---------------------------------------------------------------------------
+
+# Map of service -> list of default model names to auto-create at $0.00
+DEFAULT_COST_MODELS: dict[str, list[str]] = {
+    "openai":      ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+    "anthropic":   ["claude-sonnet", "claude-haiku", "claude-opus"],
+    "openrouter":  ["openrouter-default"],
+    "getlate":     ["getlate-default"],
+    "ollama":      ["ollama-local"],
+    "lmstudio":    ["lmstudio-local"],
+    "custom":      ["custom-default"],
+    # Non-LLM — single $0.00 placeholder for cost visibility
+    "elevenlabs":  ["elevenlabs"],
+    "github":      ["github"],
+    "kie":         ["kie"],
+    "sora":        ["sora"],
+}
+
+
+async def create_default_cost_entries(db: AsyncSession, connection_id: int, service: str) -> list[str]:
+    """
+    Auto-create $0.00 cost entries for all default models for a given service.
+    Skips models that already have a cost entry for this connection_id.
+    Returns list of model names created.
+    """
+    from aigateway.storage.models import CostConfig
+
+    models_to_create = DEFAULT_COST_MODELS.get(service, [service])
+    created = []
+
+    for model_name in models_to_create:
+        # Check for existing entry with this connection_id + model
+        existing = await db.execute(
+            select(CostConfig).where(
+                CostConfig.connection_id == connection_id,
+                CostConfig.model == model_name,
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+
+        entry = CostConfig(
+            connection_id=connection_id,
+            model=model_name,
+            provider=service,
+            input_cost_per_million=0.0,
+            output_cost_per_million=0.0,
+        )
+        db.add(entry)
+        created.append(model_name)
+
+    if created:
+        await db.commit()
+
+    return created

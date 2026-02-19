@@ -393,7 +393,7 @@ let connectionsData = [];
 let requestsData = [];
 let apiCallsData = [];   // non-LLM API calls (github, social, etc.)
 let costsData = [];
-let budgetData = null;
+let budgetData = null;  // legacy global budget (kept for backward compat)
 
 let tokenChart = null;
 let serviceChart = null; // requests-by-service bar chart
@@ -471,6 +471,57 @@ function formatCost(usd) {
     return '<span style="color:var(--yellow)">$' + usd.toFixed(4) + '</span>';
 }
 
+function formatCountdown(isoStr) {
+    if (!isoStr) return '';
+    const ms = new Date(isoStr) - Date.now();
+    if (ms <= 0) return 'now';
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function budgetBannerHtml() {
+    const s = statsData || {};
+    const blocked = s.blocked_connections || [];
+    const warnings = s.warning_connections || [];
+
+    if (blocked.length === 0 && warnings.length === 0) return '';
+
+    const banners = [];
+
+    if (blocked.length > 0) {
+        const first = blocked[0];
+        const countdown = formatCountdown(first.resets_at);
+        const extra = blocked.length > 1 ? ` <a href="#" onclick="navigateTo('costs');return false;" style="color:var(--red);text-decoration:underline">+${blocked.length - 1} more</a>` : '';
+        banners.push(`
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--red-dim);border:1px solid rgba(248,113,113,0.35);border-radius:10px">
+                <span style="color:var(--red);flex-shrink:0;font-size:16px">⛔</span>
+                <span style="font-size:13px;color:var(--red);font-weight:600;flex:1">
+                    <strong>${first.name}</strong> BLOCKED — ${first.reason} budget exceeded ($${(first.spent_usd||0).toFixed(2)} / $${(first.limit_usd||0).toFixed(2)}). Resets in ${countdown}${extra}
+                </span>
+                <button class="btn btn-sm" style="background:var(--red);color:white;flex-shrink:0" onclick="confirmBudgetOverride(${first.id})">Resume</button>
+            </div>
+        `);
+    }
+
+    if (warnings.length > 0) {
+        const first = warnings[0];
+        const pct = first.pct || 0;
+        const countdown = formatCountdown(first.resets_at);
+        const extra = warnings.length > 1 ? ` <a href="#" onclick="navigateTo('costs');return false;" style="color:var(--yellow);text-decoration:underline">+${warnings.length - 1} more</a>` : '';
+        banners.push(`
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--yellow-dim);border:1px solid rgba(251,191,36,0.3);border-radius:10px">
+                <span style="color:var(--yellow);flex-shrink:0">${ICONS.alert}</span>
+                <span style="font-size:13px;color:var(--yellow);font-weight:600;flex:1">
+                    <strong>${first.name}</strong> ${first.period} budget ${pct}% used — $${(first.spent_usd||0).toFixed(2)} of $${(first.limit_usd||0).toFixed(2)}. Resets in ${countdown}${extra}
+                </span>
+            </div>
+        `);
+    }
+
+    return `<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">${banners.join('')}</div>`;
+}
+
 function formatTime(isoStr) {
     if (!isoStr) return '—';
     const d = new Date(isoStr);
@@ -520,17 +571,7 @@ function renderOverview() {
     const total = s.total_connections || 0;
     const dailyPct = budget.daily_pct || 0;
 
-    let alertBanner = '';
-    if (dailyPct > 70) {
-        const isRed = dailyPct > 90;
-        const color = isRed ? '#f87171' : '#fbbf24';
-        const bg = isRed ? 'var(--red-dim)' : 'var(--yellow-dim)';
-        const border = isRed ? 'rgba(248,113,113,0.3)' : 'rgba(251,191,36,0.3)';
-        alertBanner = `<div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:${bg};border:1px solid ${border};border-radius:10px;margin-bottom:20px">
-            <span style="color:${color}">${ICONS.alert}</span>
-            <span style="font-size:13px;color:${color};font-weight:600">Daily budget ${Math.round(dailyPct)}% used — $${cost.toFixed(2)} of $${(budget.daily_limit || 5).toFixed(2)} limit</span>
-        </div>`;
-    }
+    const alertBanner = budgetBannerHtml();
 
     const statCards = [
         { icon: ICONS.zap,      label: 'Tokens Today',    value: formatNum(tokens),      sub: 'Across all providers',              color: '#22d3ee' },
@@ -834,6 +875,7 @@ function renderActivity() {
 
     document.getElementById('content').innerHTML = `
         <div class="view">
+            ${budgetBannerHtml()}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Recent Activity</h2>
                 <div style="display:flex;align-items:center;gap:12px">
@@ -907,7 +949,59 @@ function renderConnections() {
 
             const totalCols = metaCols.length;
 
-            return `<div class="card" style="opacity:${opacity};border-color:${borderColor}">
+            // Budget status for card
+            const budgetBlocked = conn.budget_blocked;
+            const overrideActive = conn.budget_override_active;
+            const cardBorderColor = budgetBlocked
+                ? 'rgba(248,113,113,0.45)'
+                : overrideActive
+                ? 'rgba(251,191,36,0.4)'
+                : borderColor;
+
+            // Budget row — only show when at least one limit is set
+            const hasBudgets = conn.daily_limit_usd != null || conn.weekly_limit_usd != null || conn.monthly_limit_usd != null;
+            const budgetRowHtml = hasBudgets ? (() => {
+                const periods = [
+                    { label: 'Daily', spent: conn.daily_spent_usd || 0, limit: conn.daily_limit_usd },
+                    { label: 'Weekly', spent: conn.weekly_spent_usd || 0, limit: conn.weekly_limit_usd },
+                    { label: 'Monthly', spent: conn.monthly_spent_usd || 0, limit: conn.monthly_limit_usd },
+                ];
+                const budgetCells = periods.map(p => {
+                    if (p.limit == null) return `<div><div style="font-size:11px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${p.label} Budget</div><span style="color:var(--text-dim);font-size:13px">No limit</span></div>`;
+                    const pct = p.limit > 0 ? Math.min(p.spent / p.limit * 100, 100) : 0;
+                    const col = pct >= 100 ? 'var(--red)' : pct >= 70 ? 'var(--yellow)' : 'var(--green)';
+                    return `<div>
+                        <div style="font-size:11px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${p.label} Budget</div>
+                        <div class="mono" style="font-size:15px;font-weight:700;color:${col}">$${p.spent.toFixed(2)} / $${p.limit.toFixed(2)}</div>
+                        <div style="height:4px;background:var(--surface-alt);border-radius:2px;margin-top:6px">
+                            <div style="height:100%;width:${pct}%;background:${col};border-radius:2px;transition:width .5s"></div>
+                        </div>
+                    </div>`;
+                }).join('');
+                const statusBadge = budgetBlocked
+                    ? `<span style="font-size:11px;font-weight:700;color:var(--red);background:var(--red-dim);padding:3px 10px;border-radius:4px;animation:pulse 2s infinite">⛔ BUDGET BLOCKED</span>`
+                    : overrideActive
+                    ? `<span style="font-size:11px;font-weight:700;color:var(--yellow);background:var(--yellow-dim);padding:3px 10px;border-radius:4px">⚠️ OVERRIDE</span>`
+                    : '';
+                const resumeBtn = budgetBlocked
+                    ? `<button class="btn btn-sm" style="background:var(--red);color:white" onclick="confirmBudgetOverride(${conn.id})">Resume</button>`
+                    : '';
+                return `<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <span style="font-size:12px;color:var(--text-dim);font-weight:600">Budget</span>
+                            ${statusBadge}
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            ${resumeBtn}
+                            <button class="btn btn-ghost btn-sm" onclick="openBudgetEditModal(${conn.id})">${ICONS.settings} Edit</button>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">${budgetCells}</div>
+                </div>`;
+            })() : '';
+
+            return `<div class="card" style="opacity:${opacity};border-color:${cardBorderColor}">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start">
                     <div style="display:flex;align-items:center;gap:14px">
                         <div style="width:44px;height:44px;border-radius:10px;background:${color}15;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -936,6 +1030,7 @@ function renderConnections() {
                         </div>
                     `).join('')}
                 </div>
+                ${budgetRowHtml}
                 ${pendingDeleteId === conn.id ? `
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding:12px 16px;background:var(--red-dim);border:1px solid rgba(248,113,113,0.3);border-radius:8px">
                         <span style="font-size:13px;color:var(--red);font-weight:600">Remove ${conn.name}? This cannot be undone.</span>
@@ -950,6 +1045,7 @@ function renderConnections() {
 
     document.getElementById('content').innerHTML = `
         <div class="view">
+            ${budgetBannerHtml()}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Connections</h2>
                 <div style="display:flex;gap:10px">
@@ -991,77 +1087,158 @@ async function importFromEnv() {
 // ============================================================
 
 function renderCosts() {
-    const budget = budgetData || { daily_limit_usd: 5, weekly_limit_usd: 25, monthly_limit_usd: 80 };
-    const stats = statsData || {};
-    const dailySpent = stats.estimated_daily_cost_usd || 0;
-    const weeklySpent = dailySpent * 7;
-    const monthlySpent = dailySpent * 30;
+    // Build a map of connection_id → connection for grouping
+    const connMap = {};
+    connectionsData.forEach(c => { connMap[c.id] = c; });
 
-    const budgetBars = [
-        { label: 'Daily', limit: budget.daily_limit_usd, spent: dailySpent },
-        { label: 'Weekly', limit: budget.weekly_limit_usd, spent: weeklySpent },
-        { label: 'Monthly', limit: budget.monthly_limit_usd, spent: monthlySpent },
-    ].map(b => {
-        const pct = Math.min(b.limit > 0 ? (b.spent / b.limit * 100) : 0, 100);
-        const color = pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)';
-        return `<div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <span style="font-size:13px;font-weight:600;color:var(--text-muted)">${b.label} Budget</span>
-                <span class="mono" style="font-size:12px;color:${color};font-weight:700">${Math.round(pct)}%</span>
+    // Group cost entries by connection_id (null = unlinked/legacy)
+    const grouped = {};
+    costsData.forEach(c => {
+        const key = c.connection_id != null ? c.connection_id : '__unlinked__';
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(c);
+    });
+
+    // Build connection groups in order: linked connections first, then unlinked
+    const orderedKeys = [
+        ...connectionsData.map(c => c.id).filter(id => grouped[id]),
+        ...Object.keys(grouped).filter(k => k === '__unlinked__' && grouped[k]),
+    ];
+
+    // If no connections configured yet, ensure we still show the add button
+    if (orderedKeys.length === 0 && connectionsData.length === 0) {
+        orderedKeys.push('__empty__');
+    }
+
+    function budgetBar(label, spent, limit) {
+        if (limit == null) return `<span style="font-size:12px;color:var(--text-dim)">—</span>`;
+        const pct = limit > 0 ? Math.min(spent / limit * 100, 100) : 0;
+        const color = pct >= 100 ? 'var(--red)' : pct >= 70 ? 'var(--yellow)' : 'var(--green)';
+        return `<span style="font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${color}">$${spent.toFixed(2)}/$${limit.toFixed(2)} (${Math.round(pct)}%)</span>`;
+    }
+
+    const connectionGroups = orderedKeys.map(key => {
+        if (key === '__empty__') {
+            return `<div class="card" style="text-align:center;padding:48px 24px;color:var(--text-dim)">
+                <div style="font-size:28px;margin-bottom:12px">💰</div>
+                <div style="font-size:15px;font-weight:600;color:var(--text-muted);margin-bottom:8px">No cost configurations yet</div>
+                <div style="font-size:13px;margin-bottom:20px">Add a connection first, or add a cost entry manually.</div>
+                <button class="btn btn-primary btn-sm" onclick="openAddCostModal()">${ICONS.plus} Add Cost Entry</button>
+            </div>`;
+        }
+
+        const entries = grouped[key] || [];
+        let conn = key !== '__unlinked__' ? connMap[parseInt(key)] : null;
+        const label = conn ? conn.name : 'Unlinked (Legacy)';
+        const service = conn ? conn.service : (entries[0]?.provider || 'custom');
+        const tplColor = (SERVICE_TEMPLATES[service] || SERVICE_TEMPLATES.custom).color;
+
+        // Budget status from connection
+        const budgetBlocked = conn && conn.budget_blocked;
+        const overrideActive = conn && conn.budget_override_active;
+        const dailyLimit = conn?.daily_limit_usd ?? null;
+        const weeklyLimit = conn?.weekly_limit_usd ?? null;
+        const monthlyLimit = conn?.monthly_limit_usd ?? null;
+        const dailySpent = conn?.daily_spent_usd ?? 0;
+        const weeklySpent = conn?.weekly_spent_usd ?? 0;
+        const monthlySpent = conn?.monthly_spent_usd ?? 0;
+        const resetsAt = conn?.budget_resets_at;
+
+        // Status pill for header
+        let statusPill = '';
+        if (budgetBlocked) {
+            const countdown = formatCountdown(resetsAt);
+            statusPill = `<span style="font-size:11px;font-weight:700;color:var(--red);background:var(--red-dim);padding:3px 10px;border-radius:4px;border:1px solid rgba(248,113,113,0.3)">⛔ BLOCKED · Resets in ${countdown}</span>`;
+        } else if (overrideActive) {
+            const countdown = formatCountdown(conn.budget_override_until);
+            statusPill = `<span style="font-size:11px;font-weight:700;color:var(--yellow);background:var(--yellow-dim);padding:3px 10px;border-radius:4px;border:1px solid rgba(251,191,36,0.3)">⚠️ OVERRIDE · Expires in ${countdown}</span>`;
+        }
+
+        const budgetCols = [
+            { label: 'Daily', spent: dailySpent, limit: dailyLimit },
+            { label: 'Weekly', spent: weeklySpent, limit: weeklyLimit },
+            { label: 'Monthly', spent: monthlySpent, limit: monthlyLimit },
+        ];
+
+        const budgetDisplay = budgetCols.map(b =>
+            `<div style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em">${b.label}:</span>
+                ${budgetBar(b.label, b.spent, b.limit)}
+             </div>`
+        ).join('');
+
+        const costRows = entries.length === 0
+            ? `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-dim);font-size:13px">No cost entries yet — click + Add Cost Entry below</td></tr>`
+            : entries.map(c => {
+                const inputFmt = (!c.input_cost_per_million || c.input_cost_per_million === 0)
+                    ? `<span style="color:var(--green)">FREE</span>`
+                    : `<span class="mono">$${c.input_cost_per_million.toFixed(2)}</span>`;
+                const outputFmt = (!c.output_cost_per_million || c.output_cost_per_million === 0)
+                    ? `<span style="color:var(--green)">FREE</span>`
+                    : `<span class="mono">$${c.output_cost_per_million.toFixed(2)}</span>`;
+                return `<tr>
+                    <td style="padding:10px 16px;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:13px">${c.model}</td>
+                    <td style="padding:10px 16px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px">${inputFmt}</td>
+                    <td style="padding:10px 16px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px">${outputFmt}</td>
+                    <td style="padding:10px 16px;text-align:right">
+                        <button class="btn btn-ghost btn-sm" onclick="openCostEditModal(${c.id})" style="margin-right:4px">${ICONS.edit} Edit</button>
+                        <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteCostEntry(${c.id},'${c.model}')">${ICONS.trash}</button>
+                    </td>
+                </tr>`;
+            }).join('');
+
+        const editBudgetBtn = conn
+            ? `<button class="btn btn-ghost btn-sm" onclick="openBudgetEditModal(${conn.id})" style="flex-shrink:0">${ICONS.settings} Edit Budget</button>`
+            : '';
+        const resumeBtn = (budgetBlocked && conn)
+            ? `<button class="btn btn-sm" style="background:var(--red);color:white;flex-shrink:0" onclick="confirmBudgetOverride(${conn.id})">Resume</button>`
+            : '';
+
+        const borderStyle = budgetBlocked
+            ? 'border-color:rgba(248,113,113,0.4)'
+            : overrideActive
+            ? 'border-color:rgba(251,191,36,0.35)'
+            : '';
+
+        return `<div class="card" style="margin-bottom:12px;${borderStyle}">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <span style="font-size:15px;font-weight:700;color:${tplColor}">${label}</span>
+                    ${serviceBadge(service)}
+                    ${statusPill}
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    ${budgetDisplay}
+                    ${editBudgetBtn}
+                    ${resumeBtn}
+                </div>
             </div>
-            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:12px">
-                <span class="mono" style="font-size:24px;font-weight:700">$${b.spent.toFixed(2)}</span>
-                <span style="font-size:13px;color:var(--text-dim)">/ $${b.limit.toFixed(2)}</span>
+            <div style="border-radius:8px;overflow:hidden;border:1px solid var(--border)">
+                <table class="data-table" style="font-size:13px">
+                    <thead><tr style="background:var(--surface-alt)">
+                        <th style="text-align:left">Model</th>
+                        <th style="text-align:right">Input / 1M</th>
+                        <th style="text-align:right">Output / 1M</th>
+                        <th style="text-align:right">Actions</th>
+                    </tr></thead>
+                    <tbody>${costRows}</tbody>
+                </table>
             </div>
-            <div style="height:6px;background:var(--surface-alt);border-radius:3px">
-                <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .5s"></div>
+            <div style="margin-top:10px;text-align:right">
+                <button class="btn btn-ghost btn-sm" onclick="openAddCostModal(${conn ? conn.id : 'null'}, '${service}')">${ICONS.plus} Add Cost Entry</button>
             </div>
         </div>`;
     }).join('');
 
-    const costRows = costsData.length === 0
-        ? `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-dim)">No cost configurations yet</td></tr>`
-        : costsData.map(c => {
-            const inputFmt = (!c.input_cost_per_million || c.input_cost_per_million === 0)
-                ? `<span style="color:var(--green)">FREE</span>`
-                : `$${c.input_cost_per_million.toFixed(2)}`;
-            const outputFmt = (!c.output_cost_per_million || c.output_cost_per_million === 0)
-                ? `<span style="color:var(--green)">FREE</span>`
-                : `$${c.output_cost_per_million.toFixed(2)}`;
-            return `<tr>
-                <td style="padding:12px 16px;font-family:'JetBrains Mono',monospace;font-weight:500;text-align:left">${c.model}</td>
-                <td style="padding:12px 16px;text-align:right">${serviceBadge(c.provider)}</td>
-                <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${inputFmt}</td>
-                <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${outputFmt}</td>
-                <td style="padding:12px 16px;text-align:right">
-                    <button class="btn btn-ghost btn-sm" onclick="openCostEditModal(${c.id})">${ICONS.edit} Edit</button>
-                </td>
-            </tr>`;
-        }).join('');
-
     document.getElementById('content').innerHTML = `
         <div class="view">
+            ${budgetBannerHtml()}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Cost Configuration</h2>
-                <button class="btn btn-ghost btn-sm" onclick="openBudgetModal()">${ICONS.settings} Budget Limits</button>
+                <button class="btn btn-ghost btn-sm" onclick="openAddCostModal()">${ICONS.plus} Add Cost Entry</button>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px">${budgetBars}</div>
-            <div class="card">
-                <h3 style="margin:0 0 16px;font-size:15px;font-weight:700">Cost Per Token (per 1M tokens)</h3>
-                <div style="border-radius:8px;overflow:hidden;border:1px solid var(--border)">
-                    <table class="data-table">
-                        <thead><tr style="background:var(--surface-alt)">
-                            <th style="text-align:left">Model</th>
-                            <th style="text-align:right">Provider</th>
-                            <th style="text-align:right">Input Cost</th>
-                            <th style="text-align:right">Output Cost</th>
-                            <th style="text-align:right">Actions</th>
-                        </tr></thead>
-                        <tbody>${costRows}</tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="card" style="margin-top:20px">
+            ${connectionGroups}
+            <div class="card" style="margin-top:8px">
                 <h3 style="margin:0 0 16px;font-size:15px;font-weight:700">Estimated Cost Over Time</h3>
                 <div style="height:240px"><canvas id="costChart"></canvas></div>
             </div>
@@ -1166,46 +1343,54 @@ async function submitCostEdit(costId) {
 }
 
 // ============================================================
-// BUDGET MODAL
+// PER-CONNECTION BUDGET MODAL
 // ============================================================
 
-function openBudgetModal() {
-    const b = budgetData || { daily_limit_usd: 5, weekly_limit_usd: 25, monthly_limit_usd: 80 };
+function openBudgetEditModal(connId) {
+    const conn = connectionsData.find(c => c.id === connId);
+    if (!conn) return;
 
+    const val = (v) => v != null ? v : '';
     openModal(`
         <div class="modal-header">
-            <h3 style="margin:0;font-size:18px;font-weight:700">Budget Limits</h3>
+            <h3 style="margin:0;font-size:18px;font-weight:700">Budget Limits — ${conn.name}</h3>
             <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px">${ICONS.x}</button>
         </div>
-        <div class="form-group">
-            <label class="form-label">Daily Budget (USD)</label>
-            <input id="budget-daily" class="form-input mono" type="number" step="1" min="0" value="${b.daily_limit_usd}">
-        </div>
-        <div class="form-group">
-            <label class="form-label">Weekly Budget (USD)</label>
-            <input id="budget-weekly" class="form-input mono" type="number" step="1" min="0" value="${b.weekly_limit_usd}">
-        </div>
-        <div class="form-group">
-            <label class="form-label">Monthly Budget (USD)</label>
-            <input id="budget-monthly" class="form-input mono" type="number" step="1" min="0" value="${b.monthly_limit_usd}">
-        </div>
         <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--accent-dim);border-radius:8px;font-size:12px;color:var(--accent);margin-bottom:16px">
-            ${ICONS.alert} Budget alerts appear on the Overview page when usage exceeds 70% of any limit.
+            ${ICONS.alert} Leave a field blank to remove that limit. Requests will be blocked at 100% of any set limit.
         </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end">
+        <div class="form-group">
+            <label class="form-label">Daily Budget (USD) — resets at midnight UTC</label>
+            <input id="bgt-daily" class="form-input mono" type="number" step="0.01" min="0" placeholder="No limit" value="${val(conn.daily_limit_usd)}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Weekly Budget (USD) — resets Monday midnight UTC</label>
+            <input id="bgt-weekly" class="form-input mono" type="number" step="0.01" min="0" placeholder="No limit" value="${val(conn.weekly_limit_usd)}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Monthly Budget (USD) — resets 1st of month UTC</label>
+            <input id="bgt-monthly" class="form-input mono" type="number" step="0.01" min="0" placeholder="No limit" value="${val(conn.monthly_limit_usd)}">
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
             <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-            <button class="btn btn-primary" onclick="submitBudget()">${ICONS.check} Save Limits</button>
+            <button class="btn btn-primary" onclick="submitBudgetEdit(${connId})">${ICONS.check} Save</button>
         </div>
     `);
 }
 
-async function submitBudget() {
-    const daily = parseFloat(document.getElementById('budget-daily')?.value) || 0;
-    const weekly = parseFloat(document.getElementById('budget-weekly')?.value) || 0;
-    const monthly = parseFloat(document.getElementById('budget-monthly')?.value) || 0;
+async function submitBudgetEdit(connId) {
+    const parseLimit = (id) => {
+        const v = document.getElementById(id)?.value?.trim();
+        if (!v) return -1; // empty = remove limit
+        const n = parseFloat(v);
+        return isNaN(n) ? -1 : n;
+    };
+    const daily = parseLimit('bgt-daily');
+    const weekly = parseLimit('bgt-weekly');
+    const monthly = parseLimit('bgt-monthly');
 
     try {
-        const res = await fetch('/api/dashboard/budget', {
+        const res = await fetch(`/api/dashboard/connections/${connId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ daily_limit_usd: daily, weekly_limit_usd: weekly, monthly_limit_usd: monthly })
@@ -1214,10 +1399,161 @@ async function submitBudget() {
         if (!res.ok) { showToast(data.detail || 'Update failed', 'error'); return; }
 
         closeModal();
-        budgetData = { daily_limit_usd: daily, weekly_limit_usd: weekly, monthly_limit_usd: monthly };
-        await loadStats(); // refresh stats for updated budget percentages
+        await Promise.all([loadConnections(), loadStats()]);
         renderCosts();
         showToast('Budget limits updated', 'success');
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+}
+
+// ============================================================
+// ADD COST ENTRY MODAL
+// ============================================================
+
+function openAddCostModal(connId = null, defaultProvider = '') {
+    const connOptions = connectionsData.map(c =>
+        `<option value="${c.id}" ${c.id === connId ? 'selected' : ''}>${c.name} (${c.service})</option>`
+    ).join('');
+
+    openModal(`
+        <div class="modal-header">
+            <h3 style="margin:0;font-size:18px;font-weight:700">Add Cost Entry</h3>
+            <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px">${ICONS.x}</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Connection</label>
+            <select id="cost-conn-id" class="form-input">
+                <option value="">None / Unlinked</option>
+                ${connOptions}
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Model Name</label>
+            <input id="cost-model" class="form-input mono" type="text" placeholder="e.g. gpt-4o" value="">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Provider</label>
+            <input id="cost-provider" class="form-input" type="text" placeholder="e.g. openai" value="${defaultProvider}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Input Cost (per 1M tokens, USD)</label>
+            <input id="cost-input-new" class="form-input mono" type="number" step="0.01" min="0" value="0">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Output Cost (per 1M tokens, USD)</label>
+            <input id="cost-output-new" class="form-input mono" type="number" step="0.01" min="0" value="0">
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+            <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitAddCost()">${ICONS.check} Add</button>
+        </div>
+    `);
+    setTimeout(() => { document.getElementById('cost-model')?.focus(); }, 50);
+}
+
+async function submitAddCost() {
+    const model = document.getElementById('cost-model')?.value?.trim();
+    const provider = document.getElementById('cost-provider')?.value?.trim();
+    const connIdRaw = document.getElementById('cost-conn-id')?.value;
+    const connId = connIdRaw ? parseInt(connIdRaw) : null;
+    const inputVal = parseFloat(document.getElementById('cost-input-new')?.value) || 0;
+    const outputVal = parseFloat(document.getElementById('cost-output-new')?.value) || 0;
+
+    if (!model) { showToast('Model name is required', 'error'); return; }
+    if (!provider) { showToast('Provider is required', 'error'); return; }
+
+    try {
+        const res = await fetch('/api/dashboard/costs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model, provider,
+                connection_id: connId,
+                input_cost_per_million: inputVal,
+                output_cost_per_million: outputVal
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.detail || 'Create failed', 'error'); return; }
+
+        closeModal();
+        await loadCosts();
+        renderCosts();
+        showToast('Cost entry added', 'success');
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+}
+
+// ============================================================
+// DELETE COST ENTRY
+// ============================================================
+
+let _pendingDeleteCostId = null;
+
+async function deleteCostEntry(costId, modelName) {
+    if (_pendingDeleteCostId === costId) {
+        // Second click — confirm delete
+        _pendingDeleteCostId = null;
+        try {
+            const res = await fetch(`/api/dashboard/costs/${costId}`, { method: 'DELETE' });
+            if (!res.ok) { showToast('Delete failed', 'error'); return; }
+            await loadCosts();
+            renderCosts();
+            showToast(`Cost entry for '${modelName}' removed`, 'success');
+        } catch (e) {
+            showToast('Network error: ' + e.message, 'error');
+        }
+        return;
+    }
+    // First click — arm for confirmation
+    _pendingDeleteCostId = costId;
+    showToast(`Click delete again to confirm removing '${modelName}'`, 'warning', 4000);
+    setTimeout(() => { if (_pendingDeleteCostId === costId) _pendingDeleteCostId = null; }, 4000);
+}
+
+// ============================================================
+// BUDGET OVERRIDE (RESUME)
+// ============================================================
+
+function confirmBudgetOverride(connId) {
+    const conn = connectionsData.find(c => c.id === connId);
+    if (!conn) return;
+
+    const reason = conn.budget_blocked_reason || 'budget';
+    const spent = conn[`${reason}_spent_usd`] || 0;
+    const limit = conn[`${reason}_limit_usd`] || 0;
+
+    openModal(`
+        <div class="modal-header">
+            <h3 style="margin:0;font-size:18px;font-weight:700;color:var(--red)">Resume ${conn.name}?</h3>
+            <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px">${ICONS.x}</button>
+        </div>
+        <div style="padding:14px 16px;background:var(--red-dim);border:1px solid rgba(248,113,113,0.3);border-radius:8px;margin-bottom:16px;font-size:13px;color:var(--red)">
+            This connection has exceeded its ${reason} budget ($${spent.toFixed(2)} / $${limit.toFixed(2)}). Resuming will allow requests until the current period resets.
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;font-size:13px">
+            <input type="checkbox" id="override-confirm" onchange="document.getElementById('override-btn').disabled=!this.checked" style="width:16px;height:16px;cursor:pointer">
+            <label for="override-confirm" style="cursor:pointer;color:var(--text-muted)">I understand this will exceed my budget</label>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button id="override-btn" class="btn btn-danger" disabled onclick="submitBudgetOverride(${connId})">Resume</button>
+        </div>
+    `);
+}
+
+async function submitBudgetOverride(connId) {
+    try {
+        const res = await fetch(`/api/dashboard/connections/${connId}/budget-override`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.detail || 'Override failed', 'error'); return; }
+
+        closeModal();
+        await Promise.all([loadConnections(), loadStats()]);
+        renderCosts();
+        showToast('Budget override active. Enforcement resumes at ' + (data.override_until || 'next reset'), 'success', 6000);
     } catch (e) {
         showToast('Network error: ' + e.message, 'error');
     }
