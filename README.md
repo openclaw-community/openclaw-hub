@@ -16,20 +16,39 @@
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Security**: See [SECURITY.md](SECURITY.md)
 
+---
+
+## ⚡ One-Line Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/install.sh | bash
+```
+
+Works on **macOS** (Apple Silicon & Intel) and **Linux** (Ubuntu 22.04/24.04+). Requires Python 3.12+ and git.
+
+The installer handles everything: clones the repo, creates a venv, installs dependencies, sets up a managed service (launchd on macOS / systemd on Linux), and opens the dashboard in your browser. Running it again on an existing installation performs a clean update.
+
+> **Windows**: Use WSL2. See [docs/INSTALLATION.md](docs/INSTALLATION.md).
+
+---
+
 ## Features
 
-- ✅ **Multi-Provider Support**: OpenAI, Anthropic, Ollama (local)
+- ✅ **Multi-Provider Support**: OpenAI, Anthropic, Ollama (local), OpenRouter, LM Studio, custom
 - ✅ **Automatic Routing**: Intelligent model-based provider selection
-- ✅ **Cost Tracking**: Real-time cost calculation and metrics
+- ✅ **Self-Healing**: Auto-retry with exponential backoff, provider fallback routing, background health probes
+- ✅ **Push Notifications**: Real-time alerts for consecutive errors, latency spikes, and budget thresholds — dashboard banners, webhooks, and macOS/Linux desktop notifications
+- ✅ **Cost Tracking**: Real-time cost calculation, per-connection budgets with enforcement
 - ✅ **OpenAI-Compatible API**: Drop-in replacement for OpenAI SDK
-- ✅ **Database Logging**: SQLite storage for all requests
+- ✅ **Database Logging**: SQLite storage for all requests and alerts
 - ✅ **YAML Workflow Orchestration**: Human-readable multi-step pipelines
 - ✅ **MCP Tool Integration**: External tool support (web search, files, APIs)
-- ✅ **Web Dashboard**: Built-in monitoring UI at `/dashboard` — usage charts, connection management, cost tracking
+- ✅ **Web Dashboard**: Built-in monitoring UI — usage charts with historical navigation, connection management, cost tracking, alert banners
 - ✅ **Connection Management**: Add, edit, and monitor 12+ service types (LLMs, media APIs, git platforms, gateways)
-- ✅ **Budget Alerts**: Configurable daily/weekly/monthly spending limits with threshold warnings
+- ✅ **Budget Enforcement**: Per-connection daily/weekly/monthly limits; requests blocked at limit, override supported
 - ✅ **Encrypted Credentials**: Fernet-encrypted API keys and tokens at rest
-- ✅ **Dashboard API**: 18 REST endpoints for programmatic access to all dashboard features
+
+---
 
 ## 📖 Documentation
 
@@ -39,7 +58,7 @@ OpenClaw Hub is fully self-documenting!
 
 - **Dashboard**: http://127.0.0.1:8080/dashboard
 - **Interactive API Explorer**: http://127.0.0.1:8080/docs (Swagger UI)
-- **Clean Documentation**: http://127.0.0.1:8080/redoc
+- **API Reference**: http://127.0.0.1:8080/redoc
 - **OpenAPI Spec**: http://127.0.0.1:8080/openapi.json
 
 ### For AI Agents
@@ -52,252 +71,230 @@ OpenClaw Hub is fully self-documenting!
   - `GET /v1/social/capabilities` — Instagram/social media details
   - `GET /v1/videos/capabilities` — Video generation details
 
-Start here: All 27+ endpoints include complete request/response schemas, examples, and validation rules.
+---
 
 ## Quick Start
 
-### Installation
+### Already installed?
 
-Already installed? Check first before running any install commands:
+Check before running any install commands:
 
 ```bash
-# macOS — is the Hub already a launchd service?
-launchctl list | grep openclaw.hub
+# macOS — is Hub already a launchd service?
+launchctl list | grep com.openclaw.hub
 
-# Linux — is the Hub already a systemd service?
+# Linux — is Hub already a systemd service?
 systemctl --user status openclaw-hub
 
 # Either platform — is it simply running?
 curl http://127.0.0.1:8080/health
 ```
 
-If the Hub is already running as a service, use `launchctl` (macOS) or `systemctl` (Linux) to manage it — not `pkill` or manual process commands. Killing the process directly will just cause the service manager to respawn it immediately.
+If Hub is running as a service, manage it with `launchctl` (macOS) or `systemctl` (Linux) — not `pkill`. Killing the process directly causes the service manager to immediately respawn it.
 
-#### Option 1: Auto-Start (Recommended for Production)
-
-Install as a system service that starts automatically on boot:
+### Fresh install (recommended)
 
 ```bash
-# Clone repository
+curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/install.sh | bash
+```
+
+The installer:
+1. Checks for Python 3.12+ and git (exits with clear instructions if missing)
+2. Clones to `~/.openclaw-hub/` (overridable via `OPENCLAW_HUB_HOME=...`)
+3. Creates a venv and installs dependencies
+4. Bootstraps `.env` with a generated secret key
+5. Detects local Ollama automatically
+6. Installs and starts a managed service
+7. Health-checks Hub, then opens the dashboard in your browser
+
+### Update
+
+Running the installer again on an existing installation switches to update mode — pulls latest code, updates deps, restarts the service, and preserves your `.env`.
+
+### Manual / Development install
+
+> ⚠️ Only use this if you have **not** run the unified installer. If you have, Hub is already managed by a service — use `launchctl`/`systemctl` to control it.
+
+```bash
 git clone https://github.com/openclaw-community/openclaw-hub.git
 cd openclaw-hub
 
-# Create virtual environment and install
 python3.12 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Configure API keys (optional)
 cp .env.example .env
-# Edit .env with your keys
+# Edit .env with your API keys (optional — Ollama works without keys)
 
-# Run platform-specific installer
-./install-macos.sh   # macOS
-./install-linux.sh   # Linux
-# See docs/INSTALLATION.md for Windows
-```
-
-#### Option 2: Manual/Development
-
-> ⚠️ Only use this if you have NOT run `install-macos.sh` or `install-linux.sh`. If you have, the Hub is already managed by a service manager — use Option 1's management commands instead.
-
-```bash
-# Create virtual environment
-python3.12 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure
-cp .env.example .env
-# Edit .env with your API keys (optional - Ollama works without keys)
-
-# Run server
 uvicorn aigateway.main:app --host 127.0.0.1 --port 8080 --reload
 ```
 
-### Open Dashboard
+### Uninstall
 
-Navigate to **http://127.0.0.1:8080/dashboard** to access the monitoring UI.
+```bash
+~/.openclaw-hub/scripts/uninstall.sh
+```
 
-First-time users: click **Import from .env** on the Connections page to bring in your existing provider configurations.
+Stops the service, backs up your `.env` and database to `~/.openclaw-hub.backup/`, then removes the installation.
 
-📖 Full installation guide: [docs/INSTALLATION.md](docs/INSTALLATION.md)
+---
 
-### Test Endpoints
+## Service Management
+
+Hub runs as a managed background service. Always use the service manager — never kill the process directly.
+
+| | macOS (launchd) | Linux (systemd) |
+|---|---|---|
+| **Stop** | `launchctl unload ~/Library/LaunchAgents/com.openclaw.hub.plist` | `systemctl --user stop openclaw-hub` |
+| **Start** | `launchctl load ~/Library/LaunchAgents/com.openclaw.hub.plist` | `systemctl --user start openclaw-hub` |
+| **Status** | `launchctl list \| grep com.openclaw.hub` | `systemctl --user status openclaw-hub` |
+| **Logs** | `tail -f ~/.openclaw-hub/hub.log` | `journalctl --user -u openclaw-hub -f` |
+
+---
+
+## API Examples
 
 **Health Check:**
 
 ```bash
-curl http://localhost:8080/health
+curl http://127.0.0.1:8080/health
 ```
 
-**List Models (by provider):**
+**Chat Completion (Ollama — free, local):**
 
 ```bash
-curl http://localhost:8080/v1/models
-# Returns: {"models": {"ollama": [...], "openai": [...], "anthropic": [...]}}
-```
-
-**Chat Completion (Ollama — free):**
-
-```bash
-curl -X POST http://localhost:8080/v1/chat/completions \
+curl -X POST http://127.0.0.1:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "qwen2.5:32b-instruct",
-    "messages": [
-      {"role": "user", "content": "Say hello in 5 words"}
-    ],
-    "max_tokens": 100
-  }'
+  -d '{"model": "qwen2.5:32b-instruct", "messages": [{"role": "user", "content": "Say hello"}]}'
 ```
 
-**Chat Completion (GPT-4 — requires API key):**
+**Chat Completion (GPT-4o-mini — requires OpenAI API key):**
 
 ```bash
-curl -X POST http://localhost:8080/v1/chat/completions \
+curl -X POST http://127.0.0.1:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4o-mini",
-    "messages": [
-      {"role": "user", "content": "Explain quantum computing"}
-    ],
-    "max_tokens": 200
-  }'
+  -d '{"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "Explain quantum computing"}]}'
 ```
 
-**Chat Completion (Claude — requires API key):**
+**Chat Completion (Claude — requires Anthropic API key):**
 
 ```bash
-curl -X POST http://localhost:8080/v1/chat/completions \
+curl -X POST http://127.0.0.1:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet",
-    "messages": [
-      {"role": "user", "content": "Write a haiku about AI"}
-    ],
-    "max_tokens": 100
-  }'
+  -d '{"model": "claude-sonnet", "messages": [{"role": "user", "content": "Write a haiku about AI"}]}'
 ```
+
+**List active alerts:**
+
+```bash
+curl http://127.0.0.1:8080/api/alerts/active
+```
+
+**Dismiss an alert:**
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/alerts/<alert_id>/dismiss
+```
+
+---
 
 ## Dashboard
 
-OpenClaw Hub includes a built-in web dashboard for monitoring and managing your AI infrastructure.
+Access at **http://127.0.0.1:8080/dashboard**
 
-**Access:** http://127.0.0.1:8080/dashboard
+| Section | What's here |
+|---|---|
+| **Overview** | Real-time stats, token usage charts (daily/weekly/monthly with historical navigation), request distribution, connection health, active alert banners |
+| **Connections** | Manage 12+ service types; import from `.env`; per-connection budget limits with progress bars |
+| **Activity** | Every LLM and API call logged with model, provider, tokens, cost, latency, status |
+| **Costs** | Per-model cost config, budget enforcement, spend history |
 
-### Overview
+Alert banners appear on every page and dismiss without a page reload. They auto-clear when the underlying condition resolves.
 
-Real-time stats, token usage charts (daily/weekly/monthly), request distribution, connection health, and budget alerts — all in one view.
+---
 
-### Connection Management
+## Self-Healing & Alerts
 
-Manage connections to any service Hub integrates with. A template-driven setup flow supports 12 service types across LLMs, media APIs, git platforms, API gateways, and custom services — each showing only the auth fields that service requires.
+Hub automatically recovers from transient provider failures:
 
-| Category | Services |
-|----------|----------|
-| LLM | OpenAI, Anthropic |
-| LLM (Local) | Ollama, LM Studio |
-| Media / Audio | ElevenLabs |
-| Media / Video | Sora 2, Kie.ai |
-| Git / DevOps | GitHub, GitLab |
-| Data | Google Drive/Sheets |
-| Gateway | OpenRouter, getlate.dev |
-| Custom | Any service — full control over auth fields |
+- **Retry with backoff**: failed requests retried up to 3× (1s → 5s → 15s, configurable)
+- **Fallback routing**: if primary provider exhausts retries, request is routed to a fallback (e.g. `openai → ollama`)
+- **Health probes**: degraded providers are probed every 30s; marked healthy after 3 consecutive successes
+- **Push notifications**: background monitor checks every 60s for consecutive errors, latency spikes, and budget thresholds; alerts dispatched to dashboard, webhook, and desktop
 
-Existing providers can be imported from your `.env` configuration with one click. Agents can register new connections programmatically via `POST /api/dashboard/connections`.
-
-### Cost Tracking
-
-Configure per-model cost-per-token rates, set budget limits, and monitor spending with visual progress bars and threshold alerts.
-
-### Activity Feed
-
-Every API request logged with model, provider, token counts, cost, latency, and status.
-
-### Security
-
-All credentials encrypted at rest (Fernet). API keys are masked in all responses and the UI. Dashboard served on localhost only.
-
-## How It Works
-
-### Automatic Provider Routing
-
-The gateway automatically routes requests based on the model name:
-
-| Model Pattern | Provider | Example |
-|---------------|----------|---------|
-| `gpt-4*`, `gpt-3.5*` | OpenAI | `gpt-4o-mini`, `gpt-4-turbo` |
-| `claude*` | Anthropic | `claude-sonnet`, `claude-haiku` |
-| Everything else | Ollama | `qwen2.5:32b-instruct`, `llama3.2:1b` |
-
-**Example:**
+Configure in `.env`:
 
 ```bash
-# This goes to Ollama (free, local)
-"model": "qwen2.5:32b-instruct"
+# Retry
+RETRY_ENABLED=true
+RETRY_MAX_ATTEMPTS=3
+FALLBACK_RULES=openai:ollama,anthropic:ollama
 
-# This goes to OpenAI (paid, requires API key)
-"model": "gpt-4o-mini"
-
-# This goes to Anthropic (paid, requires API key)
-"model": "claude-sonnet"
+# Alerts
+ALERT_ENABLED=true
+ALERT_WEBHOOK_URL=https://your-endpoint.example.com/alerts
+ALERT_DESKTOP_NOTIFY=true
+ALERT_CONSECUTIVE_ERROR_THRESHOLD=3
+ALERT_BUDGET_THRESHOLD_PERCENT=90
 ```
 
-### Cost Tracking
-
-Every request is logged with:
-
-- Prompt tokens
-- Completion tokens
-- Total cost in USD
-- Latency in milliseconds
-- Provider used
-
-**View costs:**
-
-```bash
-sqlite3 aigateway.db "SELECT model, SUM(cost_usd) as total_cost, COUNT(*) as requests FROM requests GROUP BY model;"
-```
+---
 
 ## Architecture
 
 ```
-aigateway/
-├── api/                  # FastAPI routes
-│   ├── completions.py        # /v1/chat/completions
-│   └── dashboard.py          # /api/dashboard/* (18 endpoints)
-├── dashboard/            # Dashboard data layer
-│   ├── __init__.py
-│   ├── crypto.py             # Fernet encrypt/decrypt/mask
-│   └── data.py               # Async data access layer
-├── providers/            # LLM provider implementations
-│   ├── base.py               # Abstract interface
-│   ├── ollama.py             # Ollama (local) ✅
-│   ├── openai.py             # OpenAI ✅
-│   ├── anthropic.py          # Anthropic ✅
-│   └── manager.py            # Provider routing ✅
-├── storage/              # Database models & migrations
-│   ├── database.py           # SQLAlchemy setup
-│   └── models.py             # Request/Workflow models
-├── static/
-│   └── index.html            # Dashboard UI (single-file, no build tools)
-├── orchestration/        # Workflow engine ✅
-├── mcp/                  # MCP integration ✅
-├── config.py             # Settings management ✅
-└── main.py               # Application entry point
+openclaw-hub/
+├── install.sh                    # One-line installer (macOS + Linux)
+├── scripts/
+│   └── uninstall.sh              # Uninstaller with data backup
+├── aigateway/
+│   ├── api/                      # FastAPI routers
+│   │   ├── completions.py        # /v1/chat/completions (retry + fallback)
+│   │   ├── alerts.py             # /api/alerts/* (Issue #29)
+│   │   └── dashboard.py          # /api/dashboard/* (18 endpoints)
+│   ├── monitoring/               # Push notification subsystem (Issue #29)
+│   │   ├── alert_manager.py      # Deduplication, auto-resolve, dispatch
+│   │   ├── health_monitor.py     # Background check loop
+│   │   └── channels/             # webhook.py, desktop.py
+│   ├── providers/                # LLM provider implementations
+│   │   ├── manager.py            # Routing + fallback
+│   │   ├── health.py             # Provider health tracker (Issue #26)
+│   │   ├── ollama.py
+│   │   ├── openai.py
+│   │   └── anthropic.py
+│   ├── dashboard/
+│   │   ├── data.py               # Async data access layer
+│   │   └── crypto.py             # Fernet encrypt/decrypt/mask
+│   ├── storage/
+│   │   ├── database.py           # SQLAlchemy async setup + migrations
+│   │   └── models.py             # Request, Connection, Alert, CostConfig models
+│   ├── orchestration/            # YAML workflow engine
+│   ├── mcp/                      # MCP integration
+│   ├── static/index.html         # Dashboard UI (single-file, no build tools)
+│   ├── config.py                 # Settings (pydantic-settings, .env)
+│   └── main.py                   # App entry point, startup/shutdown lifecycle
+└── .env.example                  # Configuration reference
 ```
+
+---
+
+## Provider Routing
+
+Requests are routed automatically by model name:
+
+| Model pattern | Provider |
+|---|---|
+| `gpt-4*`, `gpt-3.5*`, `gpt-4o*` | OpenAI |
+| `claude*` | Anthropic |
+| Anything else | Ollama (local) |
+
+Fallback rules are configurable via `FALLBACK_RULES` in `.env`.
+
+---
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
-
-- Development setup
-- Coding standards
-- Pull request process
-- Testing guidelines
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, and the PR process.
 
 ## License
 
@@ -311,8 +308,8 @@ Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
 ## Project Status
 
-**Version**: 1.1.0
-**Status**: Production-ready with web dashboard
+**Version**: 1.2.0  
+**Status**: Production-ready  
 **Maintainer**: OpenClaw Community
 
-See [docs/STATUS.md](docs/STATUS.md) for detailed development history and [CHANGELOG.md](CHANGELOG.md) for version history.
+See [CHANGELOG.md](CHANGELOG.md) for version history.
