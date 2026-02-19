@@ -4,7 +4,9 @@ ESB for AI/LLM orchestration with MCP integration
 """
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+import os as _os
 import structlog
 from datetime import datetime
 from .storage.database import init_database, backfill_provider_column
@@ -61,6 +63,12 @@ app.include_router(github_router, tags=["github"])
 app.include_router(dashboard_router)
 
 
+@app.get("/dashboard", response_class=FileResponse)
+async def serve_dashboard():
+    dashboard_path = _os.path.join(_os.path.dirname(__file__), "static", "index.html")
+    return FileResponse(dashboard_path)
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -105,6 +113,11 @@ async def root():
         "health": "/health",
         "dashboard": "http://127.0.0.1:8080/dashboard"
     }
+
+
+_static_dir = _os.path.join(_os.path.dirname(__file__), "static")
+_os.makedirs(_static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 
 @app.on_event("startup")
