@@ -48,7 +48,7 @@ logger = structlog.get_logger()
 app = FastAPI(
     title="OpenClaw Hub",
     description="Unified middleware for multi-LLM orchestration with MCP integration",
-    version="0.1.0",
+    version="1.2.0",
     docs_url=None,    # replaced by custom /docs route below
     redoc_url=None,   # replaced by custom /redoc route below
 )
@@ -111,7 +111,7 @@ async def health_check():
     return JSONResponse({
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "0.1.0",
+        "version": "1.2.0",
         "service": {
             "managed_by": service_manager,
             **restart_instructions,
@@ -260,7 +260,7 @@ _LANDING_PAGE = """<!DOCTYPE html>
             <div class="brand-logo">🌿 OpenClaw</div>
             <h1 class="brand-title">OpenClaw <span>Hub</span></h1>
             <p class="brand-sub">Unified API gateway for multi-LLM orchestration, social automation, image &amp; video generation, and more.</p>
-            <span class="version">v0.1.0</span>
+            <span class="version">v1.2.0</span>
         </div>
 
         <div class="cards">
@@ -338,7 +338,7 @@ async def root(request: Request):
         return HTMLResponse(_LANDING_PAGE)
     return JSONResponse({
         "name": "OpenClaw Hub",
-        "version": "0.1.0",
+        "version": "1.2.0",
         "docs": "/docs",
         "redoc": "/redoc",
         "health": "/health",
@@ -446,7 +446,7 @@ async def startup_event():
     """Initialize services on startup"""
     global provider_manager, workflow_engine, workflow_loader, mcp_manager, _health_probe_task, _health_monitor_task
 
-    logger.info("ai_gateway_starting", version="0.1.0")
+    logger.info("ai_gateway_starting", version="1.2.0")
 
     # Restart detection
     _record_startup()

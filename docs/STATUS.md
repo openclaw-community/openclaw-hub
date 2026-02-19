@@ -1,14 +1,14 @@
 # AI Gateway - Development Status
 
-**Date**: 2026-02-18  
-**Status**: 🟢 PRODUCTION READY - WEB DASHBOARD  
-**Version**: 1.1.0 (dashboard)
+**Date**: 2026-02-19  
+**Status**: 🟢 PRODUCTION READY  
+**Version**: 1.2.0
 
 ---
 
 ## 🎉 PRODUCTION READY WITH EXPANDED CAPABILITIES!
 
-**v1.1.0 (dashboard) is live** — web dashboard with connection management, usage analytics, and cost tracking. Access at `http://127.0.0.1:8080/dashboard`.
+**v1.2.0 is live** — one-line installer, self-healing with retry/fallback, push notifications, per-connection budgets with enforcement, chart historical navigation, and a landing page. Access the dashboard at `http://127.0.0.1:8080/dashboard`.
 
 **OpenClaw Hub** is now a fully functional AI orchestration platform with:
 - ✅ Multi-provider LLM support (18 models)
