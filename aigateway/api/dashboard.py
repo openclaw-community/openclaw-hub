@@ -2,6 +2,7 @@
 Dashboard API endpoints — stats, connections, costs, budget, health.
 """
 
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -18,6 +19,97 @@ from aigateway.storage.database import get_session
 from aigateway.storage.models import BudgetLimit, Connection, CostConfig, Request
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+
+# ---------------------------------------------------------------------------
+# .env utility functions
+# ---------------------------------------------------------------------------
+
+def _find_env_path() -> str:
+    """Find the .env file relative to the project root."""
+    import os
+    # aigateway/api/dashboard.py → go up 2 levels to project root
+    base = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    return os.path.join(base, ".env")
+
+
+def _write_env_key(key: str, value: str) -> None:
+    """Write or update a key in the .env file. Safe: replaces in-place if exists, appends if not."""
+    env_path = _find_env_path()
+    try:
+        with open(env_path, 'r') as f:
+            content = f.read()
+    except FileNotFoundError:
+        content = ""
+
+    pattern = rf'^{re.escape(key)}=.*$'
+    replacement = f'{key}={value}'
+
+    if re.search(pattern, content, flags=re.MULTILINE):
+        content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
+    else:
+        if content and not content.endswith('\n'):
+            content += '\n'
+        content += f'{replacement}\n'
+
+    with open(env_path, 'w') as f:
+        f.write(content)
+    print(f'[DASHBOARD] .env updated: {key}=***')
+
+
+def _remove_env_key(key: str) -> None:
+    """Comment out a key in the .env file (prefix with #)."""
+    env_path = _find_env_path()
+    try:
+        with open(env_path, 'r') as f:
+            content = f.read()
+    except FileNotFoundError:
+        return
+
+    pattern = rf'^({re.escape(key)}=.*)$'
+    content = re.sub(pattern, r'# \1', content, flags=re.MULTILINE)
+
+    with open(env_path, 'w') as f:
+        f.write(content)
+    print(f'[DASHBOARD] .env key commented out: {key}')
+
+
+# Service classification
+LLM_SERVICES = {'openai', 'anthropic', 'ollama', 'openrouter', 'getlate', 'lmstudio', 'custom'}
+
+ENV_KEY_MAP = {
+    'openai':     {'api_key': 'OPENAI_API_KEY'},
+    'anthropic':  {'api_key': 'ANTHROPIC_API_KEY'},
+    'ollama':     {'base_url': 'OLLAMA_URL'},
+    'openrouter': {'api_key': 'OPENROUTER_API_KEY'},
+    'getlate':    {'api_key': 'GETLATE_API_KEY'},
+    'lmstudio':   {'base_url': 'LMSTUDIO_URL'},
+    'custom':     {'api_key': 'CUSTOM_API_KEY', 'base_url': 'CUSTOM_BASE_URL'},
+}
+
+
+def _sync_env_for_connection(service: str, api_key_plain: str = "", token_plain: str = "", base_url: str = "") -> bool:
+    """Write relevant .env keys for an LLM service. Returns True if restart is needed."""
+    if service not in LLM_SERVICES:
+        return False
+
+    mapping = ENV_KEY_MAP.get(service, {})
+    if 'api_key' in mapping and api_key_plain:
+        _write_env_key(mapping['api_key'], api_key_plain)
+    if 'base_url' in mapping and base_url:
+        _write_env_key(mapping['base_url'], base_url)
+
+    return True
+
+
+def _remove_env_for_connection(service: str) -> bool:
+    """Comment out .env keys for a deleted LLM connection. Returns True if restart needed."""
+    if service not in LLM_SERVICES:
+        return False
+    mapping = ENV_KEY_MAP.get(service, {})
+    for _, env_key in mapping.items():
+        _remove_env_key(env_key)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -156,12 +248,27 @@ async def create_connection(body: ConnectionCreate, db: AsyncSession = Depends(g
     db.add(conn)
     await db.commit()
     await db.refresh(conn)
+
+    # Sync to .env for LLM providers
+    restart_required = _sync_env_for_connection(
+        service=body.service,
+        api_key_plain=body.api_key,
+        token_plain=body.token,
+        base_url=body.base_url,
+    )
+
     print(f'[DASHBOARD] Connection created: name="{conn.name}", service="{conn.service}" (id={conn.id})')
+
+    msg = "Connection created successfully"
+    if restart_required:
+        msg = "Connection saved. Restart Hub for routing changes to take effect."
+
     return {
         "id": conn.id,
         "name": conn.name,
         "service": conn.service,
-        "message": "Connection created successfully",
+        "message": msg,
+        "restart_required": restart_required,
     }
 
 
@@ -176,28 +283,47 @@ async def update_connection(
         raise HTTPException(status_code=404, detail=f"Connection {conn_id} not found")
 
     updated_fields = []
-    key = get_or_create_secret_key()
+    fernet_key = get_or_create_secret_key()
+    new_api_key_plain = ""
+    new_base_url = ""
 
     if body.name is not None:
         conn.name = body.name
         updated_fields.append("name")
     if body.base_url is not None:
         conn.base_url = body.base_url
+        new_base_url = body.base_url
         updated_fields.append("base_url")
     if body.api_key:  # Only update if non-empty
-        conn.api_key_encrypted = encrypt_value(body.api_key, key)
+        conn.api_key_encrypted = encrypt_value(body.api_key, fernet_key)
+        new_api_key_plain = body.api_key
         updated_fields.append("api_key")
         print(f'[DASHBOARD] API key updated for connection: name="{conn.name}" (id={conn_id})')
     if body.token:  # Only update if non-empty
-        conn.token_encrypted = encrypt_value(body.token, key)
+        conn.token_encrypted = encrypt_value(body.token, fernet_key)
         updated_fields.append("token")
     if body.cred_path is not None:
         conn.cred_path = body.cred_path
         updated_fields.append("cred_path")
 
     await db.commit()
+
+    # Sync .env if credentials or base_url changed for LLM services
+    restart_required = False
+    if new_api_key_plain or new_base_url:
+        restart_required = _sync_env_for_connection(
+            service=conn.service,
+            api_key_plain=new_api_key_plain,
+            base_url=new_base_url,
+        )
+
     print(f'[DASHBOARD] Connection updated: name="{conn.name}" (id={conn_id}), fields={updated_fields}')
-    return {"id": conn.id, "name": conn.name, "message": "Connection updated successfully"}
+
+    msg = "Connection updated successfully"
+    if restart_required:
+        msg = "Connection saved. Restart Hub for routing changes to take effect."
+
+    return {"id": conn.id, "name": conn.name, "message": msg, "restart_required": restart_required}
 
 
 @router.delete("/connections/{conn_id}")
@@ -208,10 +334,18 @@ async def delete_connection(conn_id: int, db: AsyncSession = Depends(get_session
     if not conn:
         raise HTTPException(status_code=404, detail=f"Connection {conn_id} not found")
     name = conn.name
+    service = conn.service
     await db.delete(conn)
     await db.commit()
+
+    restart_required = _remove_env_for_connection(service)
     print(f'[DASHBOARD] Connection deleted: name="{name}" (id={conn_id})')
-    return {"message": f"Connection '{name}' deleted"}
+
+    msg = f"Connection '{name}' deleted"
+    if restart_required:
+        msg += ". Restart Hub for routing changes to take effect."
+
+    return {"message": msg, "restart_required": restart_required}
 
 
 @router.patch("/connections/{conn_id}/toggle")

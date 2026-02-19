@@ -254,6 +254,25 @@
             padding: 12px 14px;
             border-top: 1px solid var(--border);
         }
+
+        /* Toast */
+        #toast {
+            position: fixed;
+            bottom: 28px;
+            right: 28px;
+            z-index: 2000;
+            display: none;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            max-width: 380px;
+            line-height: 1.4;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+        }
+        #toast.success { background: var(--green-dim); border: 1px solid rgba(52,211,153,0.3); color: var(--green); }
+        #toast.warning { background: var(--yellow-dim); border: 1px solid rgba(251,191,36,0.3); color: var(--yellow); }
+        #toast.error { background: var(--red-dim); border: 1px solid rgba(248,113,113,0.3); color: var(--red); }
     </style>
 </head>
 <body>
@@ -283,6 +302,7 @@
     </div>
 
     <div id="modal-overlay"></div>
+    <div id="toast"></div>
 
     <script>
 // ============================================================
@@ -753,7 +773,7 @@ async function refreshActivity() {
 function renderConnections() {
     const infoBanner = `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--accent-dim);border:1px solid rgba(34,211,238,0.2);border-radius:8px;margin-bottom:20px;font-size:13px;color:var(--text-muted)">
         <span style="color:var(--accent);flex-shrink:0">${ICONS.alert}</span>
-        Connections are managed here for monitoring and credential storage. To activate a new LLM provider for routing, add its API key to <code style="font-family:monospace;color:var(--accent)">.env</code> and restart Hub.
+        LLM provider changes require a Hub restart to take effect. Non-LLM service connections (ElevenLabs, GitHub, etc.) are available immediately via the API.
     </div>`;
 
     const cards = connectionsData.length === 0
@@ -761,7 +781,7 @@ function renderConnections() {
               <div style="margin-bottom:16px;font-size:32px">🔌</div>
               <div style="font-size:16px;font-weight:600;margin-bottom:8px;color:var(--text-muted)">No connections configured</div>
               <div style="font-size:13px;margin-bottom:24px">Add a connection to start monitoring providers</div>
-              <button class="btn btn-primary" onclick="alert('Add Connection — coming in Phase 4')">${ICONS.plus} Add Connection</button>
+              <button class="btn btn-primary" onclick="openAddConnectionModal()">${ICONS.plus} Add Connection</button>
            </div>`
         : connectionsData.map(conn => {
             const tpl = SERVICE_TEMPLATES[conn.service] || SERVICE_TEMPLATES.custom;
@@ -805,9 +825,9 @@ function renderConnections() {
                         </div>
                     </div>
                     <div style="display:flex;gap:8px;flex-shrink:0">
-                        <button class="btn btn-ghost btn-sm" onclick="alert('Disable/Enable coming in Phase 4')">${conn.enabled ? 'Disable' : 'Enable'}</button>
-                        <button class="btn btn-ghost btn-sm">${ICONS.edit} Edit</button>
-                        <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:rgba(248,113,113,0.4)">${ICONS.trash}</button>
+                        <button class="btn btn-ghost btn-sm" onclick="toggleConnection(${conn.id})">${conn.enabled ? 'Disable' : 'Enable'}</button>
+                        <button class="btn btn-ghost btn-sm" onclick="openEditConnectionModal(${conn.id})">${ICONS.edit} Edit</button>
+                        <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:rgba(248,113,113,0.4)" onclick="showDeleteConfirm(${conn.id})">${ICONS.trash}</button>
                     </div>
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(${totalCols}, 1fr);gap:16px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
@@ -818,6 +838,15 @@ function renderConnections() {
                         </div>
                     `).join('')}
                 </div>
+                ${pendingDeleteId === conn.id ? `
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding:12px 16px;background:var(--red-dim);border:1px solid rgba(248,113,113,0.3);border-radius:8px">
+                        <span style="font-size:13px;color:var(--red);font-weight:600">Remove ${conn.name}? This cannot be undone.</span>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn btn-ghost btn-sm" onclick="showDeleteConfirm(${conn.id})">Cancel</button>
+                            <button class="btn btn-danger btn-sm" onclick="confirmDelete(${conn.id})">${ICONS.trash} Remove</button>
+                        </div>
+                    </div>
+                ` : ''}
             </div>`;
         }).join('');
 
@@ -825,7 +854,7 @@ function renderConnections() {
         <div class="view">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Connections</h2>
-                <button class="btn btn-primary" onclick="alert('Add Connection — coming in Phase 4')">${ICONS.plus} Add Connection</button>
+                <button class="btn btn-primary" onclick="openAddConnectionModal()">${ICONS.plus} Add Connection</button>
             </div>
             ${infoBanner}
             <div style="display:flex;flex-direction:column;gap:16px">${cards}</div>
@@ -952,6 +981,390 @@ function renderCostChart() {
             }
         }
     });
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+
+function showToast(message, type = 'success', durationMs = 4000) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = type;
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, durationMs);
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+
+let currentModal = null;
+
+function openModal(contentHtml, width = 520) {
+    const overlay = document.getElementById('modal-overlay');
+    overlay.innerHTML = `
+        <div class="modal-box" style="width:${width}px" onclick="event.stopPropagation()">
+            ${contentHtml}
+        </div>
+    `;
+    overlay.classList.add('open');
+    overlay.onclick = closeModal;
+    currentModal = overlay;
+
+    document._modalEscHandler = (e) => { if (e.key === 'Escape') closeModal(); };
+    document.addEventListener('keydown', document._modalEscHandler);
+}
+
+function closeModal() {
+    const overlay = document.getElementById('modal-overlay');
+    overlay.classList.remove('open');
+    overlay.innerHTML = '';
+    if (document._modalEscHandler) {
+        document.removeEventListener('keydown', document._modalEscHandler);
+        document._modalEscHandler = null;
+    }
+}
+
+// ============================================================
+// ADD CONNECTION — TWO-STEP MODAL
+// ============================================================
+
+let addStep = 'pick'; // 'pick' | 'configure'
+let selectedServiceKey = null;
+let customFieldToggles = { baseUrl: true, apiKey: true, token: false, credPath: false };
+
+function openAddConnectionModal() {
+    addStep = 'pick';
+    selectedServiceKey = null;
+    renderAddModalPick('');
+}
+
+function renderAddModalPick(searchQuery) {
+    const lq = searchQuery.toLowerCase();
+
+    const grouped = {};
+    Object.entries(SERVICE_TEMPLATES).forEach(([key, tpl]) => {
+        if (!lq || tpl.name.toLowerCase().includes(lq) || tpl.category.toLowerCase().includes(lq) || key.includes(lq)) {
+            if (!grouped[tpl.category]) grouped[tpl.category] = [];
+            grouped[tpl.category].push({ key, ...tpl });
+        }
+    });
+
+    const categories = CATEGORY_ORDER.filter(cat => grouped[cat]);
+
+    const categoryHtml = categories.map(cat => {
+        const items = grouped[cat].map(svc => `
+            <div onclick="selectServiceTemplate('${svc.key}')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all .15s"
+                onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface-alt)';this.style.transform='translateY(-1px)'"
+                onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)';this.style.transform='none'">
+                <div style="width:36px;height:36px;border-radius:8px;background:${svc.color}15;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:${svc.color}">
+                    ${(SERVICE_ICONS[svc.icon] || ICONS.server)}
+                </div>
+                <div style="min-width:0">
+                    <div style="font-size:13px;font-weight:700;color:var(--text)">${svc.name}</div>
+                    <div style="font-size:11px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${svc.hint.split('—')[0].trim()}</div>
+                </div>
+            </div>
+        `).join('');
+
+        return `<div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;padding-left:2px">${cat}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${items}</div>
+        </div>`;
+    }).join('');
+
+    openModal(`
+        <div class="modal-header">
+            <h3 style="margin:0;font-size:18px;font-weight:700">Add Connection</h3>
+            <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px">${ICONS.x}</button>
+        </div>
+        <div style="position:relative;margin-bottom:20px">
+            <span style="position:absolute;left:12px;top:11px;color:var(--text-dim)">${ICONS.search}</span>
+            <input id="svc-search" type="text" placeholder="Search services..." value="${searchQuery}"
+                oninput="renderAddModalPick(this.value)"
+                style="width:100%;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:10px 14px 10px 38px;color:var(--text);font-size:14px;outline:none;font-family:inherit">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:20px;max-height:55vh;overflow-y:auto;padding-right:4px">
+            ${categoryHtml}
+        </div>
+    `, 640);
+
+    setTimeout(() => { const el = document.getElementById('svc-search'); if (el) el.focus(); }, 50);
+}
+
+function selectServiceTemplate(serviceKey) {
+    selectedServiceKey = serviceKey;
+    addStep = 'configure';
+    customFieldToggles = { baseUrl: true, apiKey: true, token: false, credPath: false };
+    renderAddModalConfigure();
+}
+
+function renderAddModalConfigure() {
+    const tpl = SERVICE_TEMPLATES[selectedServiceKey];
+    const isCustom = selectedServiceKey === 'custom';
+    const color = tpl.color;
+
+    const showField = (f) => isCustom ? customFieldToggles[f] : tpl.fields[f];
+
+    const customToggles = isCustom ? `
+        <div style="margin-bottom:8px">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Credential Fields Needed</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+                ${[
+                    {key:'baseUrl',label:'Base URL'},
+                    {key:'apiKey',label:'API Key'},
+                    {key:'token',label:'Token / PAT'},
+                    {key:'credPath',label:'Credentials File'},
+                ].map(f => `<button onclick="toggleCustomField('${f.key}')" id="toggle-${f.key}"
+                    style="padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ${customFieldToggles[f.key] ? 'var(--accent)' : 'var(--border)'};background:${customFieldToggles[f.key] ? 'var(--accent-dim)' : 'transparent'};color:${customFieldToggles[f.key] ? 'var(--accent)' : 'var(--text-muted)'};transition:all .15s">
+                    ${f.label}
+                </button>`).join('')}
+            </div>
+        </div>
+    ` : '';
+
+    openModal(`
+        <div class="modal-header">
+            <h3 style="margin:0;font-size:18px;font-weight:700">Configure ${tpl.name}</h3>
+            <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px">${ICONS.x}</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:${color}10;border:1px solid ${color}25;border-radius:10px;margin-bottom:16px">
+            <span style="color:${color}">${(SERVICE_ICONS[tpl.icon]||ICONS.server)}</span>
+            <div>
+                <div style="font-size:13px;font-weight:700;color:${color}">${tpl.name}</div>
+                <div style="font-size:11px;color:var(--text-dim)">${tpl.hint}</div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Connection Name</label>
+            <input id="conn-name" class="form-input" type="text" placeholder="e.g. Production OpenAI" value="${isCustom ? '' : tpl.name}">
+        </div>
+        ${customToggles}
+        <div id="dynamic-fields">
+            ${buildDynamicFields(tpl, isCustom)}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--accent-dim);border-radius:8px;font-size:12px;color:var(--accent);margin-bottom:16px">
+            ${ICONS.refresh} Hub will save this connection to local storage.
+        </div>
+        <div style="display:flex;gap:10px;justify-content:space-between;margin-top:8px">
+            <button class="btn btn-ghost" onclick="renderAddModalPick('')">← Back</button>
+            <div style="display:flex;gap:10px">
+                <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitAddConnection()">${ICONS.check} Add Connection</button>
+            </div>
+        </div>
+    `);
+}
+
+function buildDynamicFields(tpl, isCustom) {
+    const showField = (f) => isCustom ? customFieldToggles[f] : tpl.fields[f];
+    const tokenPlaceholder = selectedServiceKey === 'github' ? 'ghp_...' : selectedServiceKey === 'gitlab' ? 'glpat-...' : 'token...';
+
+    return `
+        ${showField('baseUrl') ? `
+        <div class="form-group">
+            <label class="form-label">Base URL</label>
+            <input id="conn-base-url" class="form-input mono" type="text" placeholder="${tpl.defaults.baseUrl || 'https://api.example.com/v1'}" value="${tpl.defaults.baseUrl || ''}">
+        </div>` : ''}
+        ${showField('apiKey') ? `
+        <div class="form-group">
+            <label class="form-label">API Key</label>
+            <input id="conn-api-key" class="form-input mono" type="password" placeholder="sk-...">
+            <span class="form-hint">Stored locally, encrypted at rest</span>
+        </div>` : ''}
+        ${showField('token') ? `
+        <div class="form-group">
+            <label class="form-label">Token / Personal Access Token</label>
+            <input id="conn-token" class="form-input mono" type="password" placeholder="${tokenPlaceholder}">
+        </div>` : ''}
+        ${showField('credPath') ? `
+        <div class="form-group">
+            <label class="form-label">Credentials File Path</label>
+            <input id="conn-cred-path" class="form-input mono" type="text" placeholder="/path/to/credentials.json">
+            <span class="form-hint">Absolute path to the credentials file on the Hub host</span>
+        </div>` : ''}
+    `;
+}
+
+function toggleCustomField(fieldKey) {
+    customFieldToggles[fieldKey] = !customFieldToggles[fieldKey];
+    document.getElementById('dynamic-fields').innerHTML = buildDynamicFields(SERVICE_TEMPLATES[selectedServiceKey], true);
+    const btn = document.getElementById(`toggle-${fieldKey}`);
+    if (btn) {
+        const active = customFieldToggles[fieldKey];
+        btn.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+        btn.style.background = active ? 'var(--accent-dim)' : 'transparent';
+        btn.style.color = active ? 'var(--accent)' : 'var(--text-muted)';
+    }
+}
+
+async function submitAddConnection() {
+    const name = document.getElementById('conn-name')?.value?.trim();
+    if (!name) { showToast('Connection name is required', 'error'); return; }
+
+    const tpl = SERVICE_TEMPLATES[selectedServiceKey];
+
+    const body = {
+        name,
+        service: selectedServiceKey,
+        category: tpl.category,
+        base_url: document.getElementById('conn-base-url')?.value || tpl.defaults.baseUrl || '',
+        api_key: document.getElementById('conn-api-key')?.value || '',
+        token: document.getElementById('conn-token')?.value || '',
+        cred_path: document.getElementById('conn-cred-path')?.value || '',
+    };
+
+    try {
+        const res = await fetch('/api/dashboard/connections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            showToast(data.detail || 'Failed to create connection', 'error');
+            return;
+        }
+
+        closeModal();
+        await loadConnections();
+        renderConnections();
+        showToast(data.message, data.restart_required ? 'warning' : 'success');
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+}
+
+// ============================================================
+// EDIT CONNECTION MODAL
+// ============================================================
+
+async function openEditConnectionModal(connId) {
+    const conn = connectionsData.find(c => c.id === connId);
+    if (!conn) return;
+
+    const tpl = SERVICE_TEMPLATES[conn.service] || SERVICE_TEMPLATES.custom;
+    const color = tpl.color;
+
+    openModal(`
+        <div class="modal-header">
+            <h3 style="margin:0;font-size:18px;font-weight:700">Edit ${conn.name}</h3>
+            <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px">${ICONS.x}</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${color}10;border:1px solid ${color}25;border-radius:10px;margin-bottom:16px">
+            <span style="color:${color}">${(SERVICE_ICONS[tpl.icon]||ICONS.server)}</span>
+            <span style="font-size:12px;font-weight:700;color:${color}">${tpl.category}</span>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Connection Name</label>
+            <input id="edit-name" class="form-input" type="text" value="${conn.name}">
+        </div>
+        ${tpl.fields.baseUrl ? `<div class="form-group">
+            <label class="form-label">Base URL</label>
+            <input id="edit-base-url" class="form-input mono" type="text" value="${conn.base_url || ''}">
+        </div>` : ''}
+        ${tpl.fields.apiKey ? `<div class="form-group">
+            <label class="form-label">Update API Key</label>
+            <input id="edit-api-key" class="form-input mono" type="password" placeholder="Enter new key to replace current (leave blank to keep)">
+            <span class="form-hint">Current: ${conn.api_key_masked || '(none)'}</span>
+        </div>` : ''}
+        ${tpl.fields.token ? `<div class="form-group">
+            <label class="form-label">Update Token / PAT</label>
+            <input id="edit-token" class="form-input mono" type="password" placeholder="Enter new token to replace current (leave blank to keep)">
+            <span class="form-hint">Current: ${conn.token_masked || '(none)'}</span>
+        </div>` : ''}
+        ${tpl.fields.credPath ? `<div class="form-group">
+            <label class="form-label">Credentials File Path</label>
+            <input id="edit-cred-path" class="form-input mono" type="text" value="${conn.cred_path || ''}">
+        </div>` : ''}
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--yellow-dim);border-radius:8px;font-size:12px;color:var(--yellow);margin-bottom:16px">
+            ${ICONS.alert} Changing credentials will update the stored value. LLM provider changes require a Hub restart.
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitEditConnection(${connId})">${ICONS.check} Save Changes</button>
+        </div>
+    `);
+}
+
+async function submitEditConnection(connId) {
+    const body = {};
+    const nameEl = document.getElementById('edit-name');
+    const baseUrlEl = document.getElementById('edit-base-url');
+    const apiKeyEl = document.getElementById('edit-api-key');
+    const tokenEl = document.getElementById('edit-token');
+    const credPathEl = document.getElementById('edit-cred-path');
+
+    if (nameEl) body.name = nameEl.value.trim();
+    if (baseUrlEl) body.base_url = baseUrlEl.value;
+    if (apiKeyEl) body.api_key = apiKeyEl.value;
+    if (tokenEl) body.token = tokenEl.value;
+    if (credPathEl) body.cred_path = credPathEl.value;
+
+    try {
+        const res = await fetch(`/api/dashboard/connections/${connId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            showToast(data.detail || 'Failed to update connection', 'error');
+            return;
+        }
+
+        closeModal();
+        await loadConnections();
+        renderConnections();
+        showToast(data.message, data.restart_required ? 'warning' : 'success');
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+}
+
+// ============================================================
+// DELETE CONFIRMATION + TOGGLE
+// ============================================================
+
+let pendingDeleteId = null;
+
+function showDeleteConfirm(connId) {
+    if (pendingDeleteId === connId) {
+        pendingDeleteId = null;
+    } else {
+        pendingDeleteId = connId;
+    }
+    renderConnections();
+}
+
+async function confirmDelete(connId) {
+    try {
+        const res = await fetch(`/api/dashboard/connections/${connId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.detail || 'Delete failed', 'error'); return; }
+        pendingDeleteId = null;
+        await loadConnections();
+        renderConnections();
+        showToast(data.message, data.restart_required ? 'warning' : 'success');
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+}
+
+async function toggleConnection(connId) {
+    try {
+        const res = await fetch(`/api/dashboard/connections/${connId}/toggle`, { method: 'PATCH' });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.detail || 'Toggle failed', 'error'); return; }
+        await loadConnections();
+        renderConnections();
+        showToast(data.message, 'success');
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
 }
 
 // ============================================================
