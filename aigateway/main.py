@@ -6,8 +6,9 @@ ESB for AI/LLM orchestration with MCP integration
 import asyncio
 import json
 from pathlib import Path
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, Request
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import os as _os
 import structlog
@@ -41,11 +42,13 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-# Initialize FastAPI app
+# Initialize FastAPI app — disable built-in docs so we can serve custom ones with back nav
 app = FastAPI(
-    title="AI Gateway",
+    title="OpenClaw Hub",
     description="Unified middleware for multi-LLM orchestration with MCP integration",
     version="0.1.0",
+    docs_url=None,    # replaced by custom /docs route below
+    redoc_url=None,   # replaced by custom /redoc route below
 )
 
 # Global instances (initialized on startup)
@@ -112,16 +115,256 @@ async def health_check():
     })
 
 
-@app.get("/")
-async def root():
-    """Root endpoint with API info"""
-    return {
-        "name": "AI Gateway",
+_BACK_NAV_BAR = """
+<div style="
+    position:sticky;top:0;z-index:999;
+    background:#0a0e17;
+    border-bottom:1px solid #1e2d3d;
+    padding:10px 24px;
+    display:flex;align-items:center;gap:12px;
+    font-family:'DM Sans',system-ui,sans-serif;
+">
+    <a href="/" style="
+        display:inline-flex;align-items:center;gap:8px;
+        color:#22d3ee;font-size:13px;font-weight:600;
+        text-decoration:none;
+        padding:6px 12px;border:1px solid rgba(34,211,238,0.3);border-radius:6px;
+    ">← OpenClaw Hub</a>
+    <span style="color:#334155;font-size:13px">/ {page_name}</span>
+</div>
+"""
+
+_LANDING_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #0a0e17;
+            color: #e2e8f0;
+            font-family: 'DM Sans', system-ui, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .container { max-width: 760px; width: 100%; }
+        .brand {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+        .brand-logo {
+            font-size: 13px;
+            font-weight: 700;
+            color: #22d3ee;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+        .brand-title {
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: -.03em;
+            line-height: 1.1;
+            margin-bottom: 10px;
+        }
+        .brand-title span { color: #22d3ee; }
+        .brand-sub {
+            font-size: 16px;
+            color: #64748b;
+            max-width: 480px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        .version {
+            display: inline-block;
+            margin-top: 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: #22d3ee;
+            background: rgba(34,211,238,0.08);
+            border: 1px solid rgba(34,211,238,0.2);
+            border-radius: 4px;
+            padding: 4px 10px;
+        }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 14px;
+            margin-bottom: 40px;
+        }
+        .card {
+            background: #111827;
+            border: 1px solid #1e2d3d;
+            border-radius: 14px;
+            padding: 24px 20px;
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+            transition: border-color .2s, transform .2s, box-shadow .2s;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .card:hover {
+            border-color: #22d3ee;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(34,211,238,0.08);
+        }
+        .card-icon { font-size: 24px; }
+        .card-title { font-size: 15px; font-weight: 700; }
+        .card-desc { font-size: 12px; color: #64748b; line-height: 1.5; }
+        .card-url {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: #22d3ee;
+            margin-top: auto;
+            padding-top: 8px;
+        }
+        .health-card .card-title { display: flex; align-items: center; gap: 8px; }
+        .health-dot {
+            width: 9px; height: 9px;
+            border-radius: 50%;
+            background: #64748b;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .health-dot.ok { background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,0.5); }
+        .health-dot.err { background: #f87171; box-shadow: 0 0 8px rgba(248,113,113,0.5); }
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #334155;
+        }
+        .footer a { color: #22d3ee; text-decoration: none; }
+        @media (max-width: 480px) {
+            .brand-title { font-size: 30px; }
+            .cards { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="brand">
+            <div class="brand-logo">🌿 OpenClaw</div>
+            <h1 class="brand-title">OpenClaw <span>Hub</span></h1>
+            <p class="brand-sub">Unified API gateway for multi-LLM orchestration, social automation, image &amp; video generation, and more.</p>
+            <span class="version">v0.1.0</span>
+        </div>
+
+        <div class="cards">
+            <a class="card" href="/dashboard">
+                <div class="card-icon">📊</div>
+                <div class="card-title">Dashboard</div>
+                <div class="card-desc">Monitor connections, usage, costs, and activity.</div>
+                <div class="card-url">/dashboard</div>
+            </a>
+            <a class="card" href="/docs">
+                <div class="card-icon">⚡</div>
+                <div class="card-title">API Explorer</div>
+                <div class="card-desc">Interactive Swagger UI — try any endpoint live.</div>
+                <div class="card-url">/docs</div>
+            </a>
+            <a class="card" href="/redoc">
+                <div class="card-icon">📖</div>
+                <div class="card-title">API Reference</div>
+                <div class="card-desc">Full API reference with request/response schemas.</div>
+                <div class="card-url">/redoc</div>
+            </a>
+            <div class="card health-card" onclick="window.open('/health','_blank')">
+                <div class="card-icon">🔍</div>
+                <div class="card-title">
+                    <span class="health-dot" id="health-dot"></span>
+                    Health
+                </div>
+                <div class="card-desc" id="health-desc">Checking status…</div>
+                <div class="card-url">/health</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            OpenClaw Hub runs locally on your machine. &nbsp;|&nbsp;
+            <a href="https://docs.openclaw.ai" target="_blank">Docs</a> &nbsp;·&nbsp;
+            <a href="https://github.com/openclaw-community/openclaw-hub" target="_blank">GitHub</a>
+        </div>
+    </div>
+
+    <script>
+        async function checkHealth() {
+            const dot = document.getElementById('health-dot');
+            const desc = document.getElementById('health-desc');
+            try {
+                const r = await fetch('/health');
+                const d = await r.json();
+                if (r.ok && d.status === 'healthy') {
+                    dot.className = 'health-dot ok';
+                    desc.textContent = 'Hub is running and healthy.';
+                } else {
+                    dot.className = 'health-dot err';
+                    desc.textContent = 'Hub returned an error.';
+                }
+            } catch {
+                dot.className = 'health-dot err';
+                desc.textContent = 'Hub is unreachable.';
+            }
+        }
+        checkHealth();
+        setInterval(checkHealth, 30000);
+    </script>
+</body>
+</html>"""
+
+
+@app.get("/", include_in_schema=False)
+async def root(request: Request):
+    """
+    Content-negotiated root endpoint.
+    - Browsers (Accept: text/html) → visual landing page
+    - API clients (Accept: application/json or no preference) → JSON metadata
+    """
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and "application/json" not in accept.split(",")[0]:
+        return HTMLResponse(_LANDING_PAGE)
+    return JSONResponse({
+        "name": "OpenClaw Hub",
         "version": "0.1.0",
         "docs": "/docs",
+        "redoc": "/redoc",
         "health": "/health",
-        "dashboard": "http://127.0.0.1:8080/dashboard"
-    }
+        "dashboard": "/dashboard",
+    })
+
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger():
+    """Swagger UI with back-navigation to landing page."""
+    html = get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title="OpenClaw Hub — API Explorer",
+    )
+    # Inject the back-nav bar into the Swagger HTML
+    back_bar = _BACK_NAV_BAR.format(page_name="API Explorer")
+    injected = html.body.decode().replace("<body>", f"<body>{back_bar}", 1)
+    return HTMLResponse(injected)
+
+
+@app.get("/redoc", include_in_schema=False)
+async def custom_redoc():
+    """ReDoc API reference with back-navigation to landing page."""
+    html = get_redoc_html(
+        openapi_url="/openapi.json",
+        title="OpenClaw Hub — API Reference",
+    )
+    back_bar = _BACK_NAV_BAR.format(page_name="API Reference")
+    injected = html.body.decode().replace("<body>", f"<body>{back_bar}", 1)
+    return HTMLResponse(injected)
 
 
 _static_dir = _os.path.join(_os.path.dirname(__file__), "static")
