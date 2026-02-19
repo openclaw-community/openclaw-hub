@@ -198,6 +198,21 @@ Every request is logged with:
 sqlite3 aigateway.db "SELECT model, SUM(cost_usd) as total_cost, COUNT(*) as requests FROM requests GROUP BY model;"
 ```
 
+## Dashboard
+
+OpenClaw Hub includes a built-in web dashboard for monitoring and managing your connections.
+
+**Access:** Navigate to `http://127.0.0.1:8080/dashboard` after starting the server.
+
+**Features:**
+- Real-time overview of token usage, request counts, and estimated costs
+- Visual charts for usage trends (daily, weekly, monthly)
+- Connection management — add, edit, disable, or remove service connections
+- Support for diverse service types: LLM providers, media APIs, Git platforms, gateways, and custom services
+- Import existing connections from your `.env` configuration
+- Per-model cost-per-token configuration
+- Budget alerts with daily, weekly, and monthly limits
+
 ## Architecture
 
 ```

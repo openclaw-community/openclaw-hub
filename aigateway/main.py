@@ -4,10 +4,12 @@ ESB for AI/LLM orchestration with MCP integration
 """
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+import os as _os
 import structlog
 from datetime import datetime
-from .storage.database import init_database
+from .storage.database import init_database, backfill_provider_column
 from .api.completions import router as completions_router
 from .api.workflows import router as workflows_router
 from .api.mcp import router as mcp_router
@@ -16,12 +18,14 @@ from .api.social import router as social_router
 from .api.videos import router as videos_router
 from .api.github import router as github_router
 from .api.usage import router as usage_router
+from .api.dashboard import router as dashboard_router
 from .api.config_status import router as config_status_router
 from .providers.manager import ProviderManager
 from .orchestration.engine import WorkflowEngine
 from .orchestration.loader import WorkflowLoader
 from .mcp.manager import MCPManager
 from .config import settings
+from .dashboard.crypto import get_or_create_secret_key
 
 # Configure structured logging
 structlog.configure(
@@ -56,6 +60,13 @@ app.include_router(images_router, tags=["images"])
 app.include_router(videos_router, tags=["videos"])
 app.include_router(social_router, tags=["social"])
 app.include_router(github_router, tags=["github"])
+app.include_router(dashboard_router)
+
+
+@app.get("/dashboard", response_class=FileResponse)
+async def serve_dashboard():
+    dashboard_path = _os.path.join(_os.path.dirname(__file__), "static", "index.html")
+    return FileResponse(dashboard_path)
 
 
 @app.get("/health")
@@ -99,8 +110,14 @@ async def root():
         "name": "AI Gateway",
         "version": "0.1.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "dashboard": "http://127.0.0.1:8080/dashboard"
     }
+
+
+_static_dir = _os.path.join(_os.path.dirname(__file__), "static")
+_os.makedirs(_static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 
 @app.on_event("startup")
@@ -112,6 +129,12 @@ async def startup_event():
     
     # Initialize database
     await init_database()
+
+    # Ensure dashboard encryption key exists
+    get_or_create_secret_key()
+
+    # Backfill provider column for existing request rows
+    await backfill_provider_column()
     
     # Initialize provider manager
     provider_manager = ProviderManager(
