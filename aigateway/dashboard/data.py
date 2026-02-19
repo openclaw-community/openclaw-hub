@@ -3,7 +3,9 @@ Data access layer for dashboard queries.
 All functions are async — they use AsyncSession.
 """
 
-from datetime import datetime, timedelta, timezone
+import calendar
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone, date as date_type
 from sqlalchemy import func, select, desc, text, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from aigateway.storage.models import Request, Connection, CostConfig, BudgetLimit, ApiCall
@@ -568,3 +570,131 @@ async def create_default_cost_entries(db: AsyncSession, connection_id: int, serv
         await db.commit()
 
     return created
+
+
+# Daily-granularity usage for a specific period (Issue #33)
+# ---------------------------------------------------------------------------
+
+async def get_daily_usage_for_period(
+    db: AsyncSession,
+    period: str,
+    date_str: str | None = None,
+) -> dict:
+    """
+    Return daily-granularity token + request data for a specific period.
+
+    period='daily'   → single day (date_str or today)
+    period='weekly'  → Mon–Sun of the week containing date_str
+    period='monthly' → all days of the month containing date_str
+
+    Only days up to today are included for the current period.
+    """
+    today = datetime.now(timezone.utc).date()
+
+    if date_str:
+        target = datetime.strptime(date_str, "%Y-%m-%d").date()
+    else:
+        target = today
+
+    if period == "daily":
+        start_date = target
+        end_date = target
+        all_days = [target]
+    elif period == "weekly":
+        monday = target - timedelta(days=target.weekday())
+        start_date = monday
+        end_date = monday + timedelta(days=6)
+        all_days = [monday + timedelta(days=i) for i in range(7)]
+        all_days = [d for d in all_days if d <= today]  # trim future days for current week
+    else:  # monthly
+        start_date = date_type(target.year, target.month, 1)
+        last_day = calendar.monthrange(target.year, target.month)[1]
+        end_date = date_type(target.year, target.month, last_day)
+        all_days = [date_type(target.year, target.month, d) for d in range(1, last_day + 1)]
+        all_days = [d for d in all_days if d <= today]
+
+    start_dt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc)
+    end_dt = datetime(end_date.year, end_date.month, end_date.day, tzinfo=timezone.utc) + timedelta(days=1)
+
+    # Token usage per day per provider
+    token_result = await db.execute(
+        select(
+            func.date(Request.timestamp).label("date"),
+            Request.provider,
+            func.sum(Request.total_tokens).label("total_tokens"),
+        )
+        .where(Request.timestamp >= start_dt)
+        .where(Request.timestamp < end_dt)
+        .group_by(func.date(Request.timestamp), Request.provider)
+        .order_by(func.date(Request.timestamp))
+    )
+
+    # API call counts per day per service
+    api_result = await db.execute(
+        select(
+            func.date(ApiCall.timestamp).label("date"),
+            ApiCall.service,
+            func.count(ApiCall.id).label("total_requests"),
+        )
+        .where(ApiCall.timestamp >= start_dt)
+        .where(ApiCall.timestamp < end_dt)
+        .group_by(func.date(ApiCall.timestamp), ApiCall.service)
+        .order_by(func.date(ApiCall.timestamp))
+    )
+
+    # Merge into daily dict
+    daily: dict = defaultdict(lambda: {"by_provider": {}, "requests_by_service": {}, "total": 0})
+
+    for row in token_result.all():
+        day = str(row.date)
+        provider = row.provider or "unknown"
+        tokens = row.total_tokens or 0
+        daily[day]["by_provider"][provider] = tokens
+        daily[day]["total"] += tokens
+        # Count each LLM completion as 1 request for the service chart
+        daily[day]["requests_by_service"][provider] = (
+            daily[day]["requests_by_service"].get(provider, 0) + 1
+        )
+
+    for row in api_result.all():
+        day = str(row.date)
+        service = row.service
+        daily[day]["requests_by_service"][service] = (
+            daily[day]["requests_by_service"].get(service, 0) + (row.total_requests or 0)
+        )
+
+    # Build output — one entry per day in the range
+    day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    data_out = []
+    for d in all_days:
+        d_str = d.isoformat()
+        entry: dict = {
+            "date": d_str,
+            "by_provider": daily[d_str]["by_provider"],
+            "requests_by_service": daily[d_str]["requests_by_service"],
+            "total": daily[d_str]["total"],
+        }
+        if period == "weekly":
+            entry["label"] = day_labels[d.weekday()]
+        data_out.append(entry)
+
+    # Build metadata
+    meta: dict = {"period": period}
+    if period == "weekly":
+        monday = target - timedelta(days=target.weekday())
+        meta["week_start"] = monday.isoformat()
+        meta["week_end"] = (monday + timedelta(days=6)).isoformat()
+    elif period == "monthly":
+        meta["month"] = target.strftime("%Y-%m")
+    else:
+        meta["date"] = target.isoformat()
+
+    # Oldest data point available (for disabling left arrow)
+    oldest_result = await db.execute(
+        select(func.min(Request.timestamp))
+    )
+    oldest_ts = oldest_result.scalar()
+    meta["oldest_date"] = oldest_ts.date().isoformat() if oldest_ts else today.isoformat()
+
+    return {**meta, "data": data_out}
+

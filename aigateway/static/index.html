@@ -386,6 +386,7 @@ const CATEGORY_ORDER = ["LLM", "LLM (Local)", "Media / Audio", "Media / Video", 
 
 let currentView = 'overview';
 let currentPeriod = 'daily';
+let currentNavDate = null; // null = current period; ISO string = historical anchor date
 
 let statsData = null;
 let usageData = {};
@@ -419,11 +420,27 @@ async function loadStats() {
     statsData = await apiFetch('/api/dashboard/stats');
 }
 
-async function loadUsage(period) {
-    if (!usageData[period]) {
-        const data = await apiFetch(`/api/dashboard/usage?period=${period}`);
-        if (data) usageData[period] = data.data;
+function _usageCacheKey(period, navDate) {
+    // For daily with no date, use the simple key to preserve 30-day trend caching.
+    if (period === 'daily' && !navDate) return period;
+    return `${period}__${navDate || 'current'}`;
+}
+
+async function loadUsage(period, navDate) {
+    const key = _usageCacheKey(period, navDate);
+    if (!usageData[key]) {
+        let url = `/api/dashboard/usage?period=${period}`;
+        if (navDate) url += `&date=${navDate}`;
+        else if (period !== 'daily') {
+            // Weekly/monthly without explicit date = current period (pass today so
+            // the API returns the right week/month rather than a cached stale result)
+            const today = new Date().toISOString().slice(0, 10);
+            url += `&date=${today}`;
+        }
+        const data = await apiFetch(url);
+        if (data) usageData[key] = data;
     }
+    return usageData[key];
 }
 
 async function loadConnections() {
@@ -528,6 +545,106 @@ function formatTime(isoStr) {
     return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+// ============================================================
+// CHART NAVIGATION HELPERS (Issue #33)
+// ============================================================
+
+function _isoToday() { return new Date().toISOString().slice(0, 10); }
+
+function _anchorDate() { return currentNavDate || _isoToday(); }
+
+function _isCurrentPeriod() {
+    if (!currentNavDate) return true;
+    const today = _isoToday();
+    if (currentPeriod === 'daily') return currentNavDate === today;
+    const mondayOf = iso => { const d = new Date(iso + 'T00:00:00Z'); const day = d.getUTCDay(); d.setUTCDate(d.getUTCDate() - (day === 0 ? 6 : day - 1)); return d.toISOString().slice(0,10); };
+    if (currentPeriod === 'weekly') return mondayOf(currentNavDate) === mondayOf(today);
+    if (currentPeriod === 'monthly') return currentNavDate.slice(0,7) === today.slice(0,7);
+    return true;
+}
+
+function _fmtDateLabel(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr + 'T00:00:00Z');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+function _addDays(isoStr, n) {
+    const d = new Date(isoStr + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+}
+
+function periodLabel() {
+    if (currentPeriod === 'daily') return _isCurrentPeriod() ? 'Today' : _fmtDateLabel(currentNavDate);
+    const key = _usageCacheKey(currentPeriod, currentNavDate);
+    const cached = usageData[key];
+    if (currentPeriod === 'weekly') {
+        const ws = cached?.week_start;
+        if (ws) return 'Week of ' + _fmtDateLabel(ws);
+        return _isCurrentPeriod() ? 'This Week' : 'Week of ' + _fmtDateLabel(_anchorDate());
+    }
+    if (currentPeriod === 'monthly') {
+        const mo = cached?.month;
+        if (mo) { const [y,m] = mo.split('-'); return new Date(+y, +m-1, 1).toLocaleDateString('en-US',{month:'long',year:'numeric'}); }
+        return _isCurrentPeriod() ? 'This Month' : _anchorDate().slice(0,7);
+    }
+    return '';
+}
+
+async function navigatePeriod(delta) {
+    const anchor = _anchorDate();
+    let newDate;
+    if (currentPeriod === 'daily') {
+        newDate = _addDays(anchor, delta);
+    } else if (currentPeriod === 'weekly') {
+        newDate = _addDays(anchor, delta * 7);
+    } else {
+        const [y, m] = anchor.slice(0,7).split('-').map(Number);
+        let nm = m + delta, ny = y;
+        if (nm < 1) { nm = 12; ny--; }
+        if (nm > 12) { nm = 1; ny++; }
+        newDate = `${ny}-${String(nm).padStart(2,'0')}-01`;
+    }
+    if (newDate > _isoToday()) return;
+    currentNavDate = newDate;
+    await loadUsage(currentPeriod, currentNavDate);
+    renderChartArea();
+}
+
+async function jumpToCurrent() {
+    currentNavDate = null;
+    await loadUsage(currentPeriod, null);
+    renderChartArea();
+}
+
+function navControlsHtml() {
+    if (currentPeriod === 'daily') return ''; // Day view = 30-day trend, no nav needed
+    const key = _usageCacheKey(currentPeriod, currentNavDate);
+    const cached = usageData[key];
+    const oldestDate = cached?.oldest_date || null;
+    const onCurrent = _isCurrentPeriod();
+    const anchor = _anchorDate();
+
+    let leftDisabled = false;
+    if (oldestDate) {
+        let prevDate;
+        if (currentPeriod === 'weekly') { prevDate = _addDays(anchor, -7); }
+        else { const [y,m] = anchor.slice(0,7).split('-').map(Number); let nm=m-1,ny=y; if(nm<1){nm=12;ny--;} prevDate=`${ny}-${String(nm).padStart(2,'0')}-01`; }
+        leftDisabled = prevDate < oldestDate;
+    }
+
+    const currentBtn = !onCurrent
+        ? `<button class="btn btn-ghost btn-sm" onclick="jumpToCurrent()" style="font-size:11px;padding:4px 10px">Current</button>`
+        : '';
+    return `<div style="display:flex;align-items:center;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick="navigatePeriod(-1)" ${leftDisabled?'disabled':''} style="padding:4px 10px;font-size:15px;line-height:1">←</button>
+        <span style="font-size:12px;font-weight:600;color:var(--text-muted);min-width:150px;text-align:center">${periodLabel()}</span>
+        <button class="btn btn-ghost btn-sm" onclick="navigatePeriod(1)" ${onCurrent?'disabled':''} style="padding:4px 10px;font-size:15px;line-height:1">→</button>
+        ${currentBtn}
+    </div>`;
+}
+
 function statusDot(status) {
     const colors = { healthy: '#34d399', degraded: '#fbbf24', error: '#f87171', offline: '#556677', unknown: '#556677' };
     const color = colors[status] || colors.unknown;
@@ -612,12 +729,15 @@ function renderOverview() {
             <div class="stat-grid">${statCards}</div>
 
             <div class="card" style="margin-bottom:16px">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
                     <h3 style="margin:0;font-size:15px;font-weight:700">Token Usage</h3>
-                    <div class="tab-bar">
-                        <button class="tab-btn ${currentPeriod === 'daily' ? 'active' : ''}" onclick="switchPeriod('daily')">Day</button>
-                        <button class="tab-btn ${currentPeriod === 'weekly' ? 'active' : ''}" onclick="switchPeriod('weekly')">Week</button>
-                        <button class="tab-btn ${currentPeriod === 'monthly' ? 'active' : ''}" onclick="switchPeriod('monthly')">Month</button>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                        <div id="chart-nav-controls">${navControlsHtml()}</div>
+                        <div class="tab-bar">
+                            <button class="tab-btn ${currentPeriod === 'daily' ? 'active' : ''}" onclick="switchPeriod('daily')">Day</button>
+                            <button class="tab-btn ${currentPeriod === 'weekly' ? 'active' : ''}" onclick="switchPeriod('weekly')">Week</button>
+                            <button class="tab-btn ${currentPeriod === 'monthly' ? 'active' : ''}" onclick="switchPeriod('monthly')">Month</button>
+                        </div>
                     </div>
                 </div>
                 <div style="height:240px"><canvas id="tokenChart"></canvas></div>
@@ -654,47 +774,92 @@ function renderOverview() {
 // CHARTS
 // ============================================================
 
+function _getChartData(chartType) {
+    // chartType: 'token' or 'service'
+    // Returns {labels, datasets, isArea} for the current period + nav state
+    const key = _usageCacheKey(currentPeriod, currentNavDate);
+    const cached = usageData[key];
+    const raw = cached ? (cached.data || cached) : [];  // new format has .data; legacy daily is array
+
+    const providerColors = { ollama: '#34d399', openai: '#22d3ee', anthropic: '#a78bfa', openrouter: '#a78bfa', getlate: '#fbbf24', lmstudio: '#34d399', custom: '#8899aa' };
+    const serviceColors = { ...providerColors, github: '#e2e8f0', late: '#fbbf24', getlate: '#fbbf24', elevenlabs: '#f472b6', kie: '#38bdf8', sora: '#fb923c', gitlab: '#fb923c' };
+    const colorMap = chartType === 'token' ? providerColors : serviceColors;
+
+    const isMonthArea = currentPeriod === 'monthly';
+
+    // Build labels
+    let labels;
+    if (currentPeriod === 'weekly') {
+        labels = raw.map(d => d.label || d.date); // Mon/Tue/...
+    } else if (currentPeriod === 'monthly') {
+        // Show every 5th day to avoid clutter
+        labels = raw.map(d => {
+            const day = parseInt(d.date.slice(8));
+            return (day === 1 || day % 5 === 0) ? String(day) : '';
+        });
+    } else {
+        // Daily (30-day trend) — show date labels
+        labels = raw.map(d => d.date ? d.date.slice(5) : d.week || d.month || '');
+    }
+
+    // Collect all keys
+    const dataKey = chartType === 'token' ? 'by_provider' : 'requests_by_service';
+    const keys = [...new Set(raw.flatMap(d => Object.keys(d[dataKey] || {})))];
+
+    const baseOpts = (color) => isMonthArea ? {
+        fill: true,
+        backgroundColor: color.replace(')', ', 0.7)').replace('rgb', 'rgba').replace('#', '').slice(0,0) || color + 'b3',
+        borderColor: color,
+        borderWidth: 2,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        stack: 'stacked',
+    } : {
+        backgroundColor: color,
+        stack: chartType === 'token' ? 'tokens' : 'reqs',
+    };
+
+    const hexToRgba = (hex, alpha) => {
+        const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+        return `rgba(${r},${g},${b},${alpha})`;
+    };
+
+    const datasets = keys.map(k => {
+        const rawColor = colorMap[k] || '#8899aa';
+        const color = isMonthArea ? hexToRgba(rawColor.startsWith('#') ? rawColor : '#8899aa', 0.75) : rawColor;
+        const borderCol = rawColor.startsWith('#') ? rawColor : '#8899aa';
+        return {
+            label: k.charAt(0).toUpperCase() + k.slice(1),
+            data: raw.map(d => (d[dataKey] || {})[k] || 0),
+            ...(isMonthArea ? { fill: true, backgroundColor: color, borderColor: borderCol, borderWidth: 2, tension: 0.3, pointRadius: 0, pointHoverRadius: 4 } : { backgroundColor: borderCol }),
+            stack: chartType === 'token' ? 'tokens' : 'reqs',
+        };
+    });
+
+    if (datasets.length === 0) {
+        datasets.push({ label: 'No data', data: [], backgroundColor: '#1e2d3d', stack: 'stacked' });
+    }
+
+    return { labels, datasets, isArea: isMonthArea };
+}
+
 function renderTokenChart() {
     const canvas = document.getElementById('tokenChart');
     if (!canvas) return;
     if (tokenChart) { tokenChart.destroy(); tokenChart = null; }
 
-    const raw = usageData[currentPeriod] || [];
-    const providers = [...new Set(raw.flatMap(d => Object.keys(d.by_provider || {})))];
-    const dateKey = currentPeriod === 'daily' ? 'date' : currentPeriod === 'weekly' ? 'week' : 'month';
-    const labels = raw.map(d => d[dateKey]);
-
-    const providerColors = { ollama: '#34d399', openai: '#22d3ee', anthropic: '#a78bfa' };
-    const datasets = providers.map(p => ({
-        label: p.charAt(0).toUpperCase() + p.slice(1),
-        data: raw.map(d => (d.by_provider || {})[p] || 0),
-        backgroundColor: providerColors[p] || '#8899aa',
-        stack: 'tokens',
-    }));
-
-    // If no data at all, show empty placeholder dataset
-    if (datasets.length === 0) {
-        datasets.push({
-            label: 'No data',
-            data: [],
-            backgroundColor: '#1e2d3d',
-            stack: 'tokens',
-        });
-    }
+    const { labels, datasets, isArea } = _getChartData('token');
+    const tooltipLabel = ctx => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} tokens`;
 
     tokenChart = new Chart(canvas, {
-        type: 'bar',
+        type: isArea ? 'line' : 'bar',
         data: { labels, datasets },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
                 legend: { labels: { color: '#8899aa', font: { size: 12 } } },
-                tooltip: {
-                    backgroundColor: '#111827', borderColor: '#1e2d3d', borderWidth: 1,
-                    titleColor: '#e2e8f0', bodyColor: '#8899aa', cornerRadius: 8,
-                    callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} tokens` }
-                }
+                tooltip: { backgroundColor: '#111827', borderColor: '#1e2d3d', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#8899aa', cornerRadius: 8, callbacks: { label: tooltipLabel } }
             },
             scales: {
                 x: { stacked: true, ticks: { color: '#556677', font: { size: 11 } }, grid: { color: '#1e2d3d' }, border: { color: '#1e2d3d' } },
@@ -709,41 +874,17 @@ function renderServiceChart() {
     if (!canvas) return;
     if (serviceChart) { serviceChart.destroy(); serviceChart = null; }
 
-    const raw = usageData[currentPeriod] || [];
-    const services = [...new Set(raw.flatMap(d => Object.keys(d.requests_by_service || {})))];
-    const dateKey = currentPeriod === 'daily' ? 'date' : currentPeriod === 'weekly' ? 'week' : 'month';
-    const labels = raw.map(d => d[dateKey]);
-
-    const serviceColors = {
-        ollama: '#34d399', openai: '#22d3ee', anthropic: '#a78bfa',
-        github: '#e2e8f0', late: '#fbbf24', s3: '#fb923c',
-        elevenlabs: '#f472b6', kie: '#38bdf8',
-    };
-
-    const datasets = services.map(s => ({
-        label: s.charAt(0).toUpperCase() + s.slice(1),
-        data: raw.map(d => (d.requests_by_service || {})[s] || 0),
-        backgroundColor: serviceColors[s] || '#8899aa',
-        stack: 'reqs',
-    }));
-
-    if (datasets.length === 0) {
-        datasets.push({ label: 'No data', data: [], backgroundColor: '#1e2d3d', stack: 'reqs' });
-    }
+    const { labels, datasets, isArea } = _getChartData('service');
+    const tooltipLabel = ctx => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} requests`;
 
     serviceChart = new Chart(canvas, {
-        type: 'bar',
+        type: isArea ? 'line' : 'bar',
         data: { labels, datasets },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
                 legend: { labels: { color: '#8899aa', font: { size: 12 } } },
-                tooltip: {
-                    backgroundColor: '#111827', borderColor: '#1e2d3d', borderWidth: 1,
-                    titleColor: '#e2e8f0', bodyColor: '#8899aa', cornerRadius: 8,
-                    callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} requests` }
-                }
+                tooltip: { backgroundColor: '#111827', borderColor: '#1e2d3d', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#8899aa', cornerRadius: 8, callbacks: { label: tooltipLabel } }
             },
             scales: {
                 x: { stacked: true, ticks: { color: '#556677', font: { size: 11 } }, grid: { color: '#1e2d3d' }, border: { color: '#1e2d3d' } },
@@ -808,7 +949,8 @@ function renderPieChart() {
 
 async function switchPeriod(period) {
     currentPeriod = period;
-    await loadUsage(period);
+    currentNavDate = null; // reset to current period when switching tabs
+    await loadUsage(period, null);
     document.querySelectorAll('.tab-btn').forEach(btn => {
         const text = btn.textContent.trim().toLowerCase();
         btn.classList.toggle('active',
@@ -817,6 +959,14 @@ async function switchPeriod(period) {
             (period === 'monthly' && text === 'month')
         );
     });
+    renderChartArea();
+}
+
+function renderChartArea() {
+    // Re-render nav controls + both charts without re-rendering the full overview.
+    // Updates the nav controls container and redraws token + service charts.
+    const navEl = document.getElementById('chart-nav-controls');
+    if (navEl) navEl.innerHTML = navControlsHtml();
     renderTokenChart();
     renderServiceChart();
 }
@@ -1977,13 +2127,13 @@ async function showView(view) {
 
 async function refreshView(view) {
     if (view === 'overview') {
-        await Promise.all([loadStats(), loadUsage(currentPeriod), loadConnections()]);
+        await Promise.all([loadStats(), loadUsage(currentPeriod, currentNavDate), loadConnections()]);
         renderOverview();
     } else if (view === 'connections') {
         await loadConnections();
         renderConnections();
     } else if (view === 'costs') {
-        await Promise.all([loadStats(), loadBudget(), loadCosts(), loadUsage('daily')]);
+        await Promise.all([loadStats(), loadBudget(), loadCosts(), loadUsage('daily', null)]);
         renderCosts();
     } else if (view === 'activity') {
         await Promise.all([loadRequests(50), loadApiCalls(50)]);
@@ -2008,7 +2158,7 @@ function renderHeader() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     renderSidebar();
-    await Promise.all([loadStats(), loadUsage('daily'), loadConnections(), loadRequests(50), loadApiCalls(50)]);
+    await Promise.all([loadStats(), loadUsage('daily', null), loadConnections(), loadRequests(50), loadApiCalls(50)]);
     renderHeader();
     renderOverview();
 });
