@@ -273,44 +273,45 @@ async def get_stats(db: AsyncSession = Depends(get_session)):
 @router.get("/usage")
 async def get_usage(
     period: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
+    date: Optional[str] = Query(None, description="ISO date string (YYYY-MM-DD) for historical navigation. Defaults to today/current period."),
     db: AsyncSession = Depends(get_session),
 ):
     """
-    Token usage and request counts pivoted by date/week/month.
+    Token usage and request counts.
+
+    - period=daily (no date): 30-day trend, one bar per day (legacy/overview use)
+    - period=weekly or period=monthly (with or without date): daily-granularity data
+      for the specific week/month containing `date` (defaults to current period)
+    - period=daily with date: single-day data
 
     Returns:
-    - data[].by_provider: token counts per LLM provider (for token chart)
-    - data[].requests_by_service: request counts per service (LLM + non-LLM combined)
+    - data[].by_provider: token counts per LLM provider
+    - data[].requests_by_service: request counts per service (LLM + non-LLM)
+    - For weekly/monthly: additional metadata (week_start/week_end or month)
+    - oldest_date: earliest data available (for disabling left nav arrow)
     """
-    if period == "daily":
-        raw_tokens = await data.get_token_usage_daily(db)
-        raw_api = await data.get_api_calls_by_service_daily(db)
-        date_key = "date"
-    elif period == "weekly":
-        raw_tokens = await data.get_token_usage_weekly(db)
-        raw_api = await data.get_api_calls_by_service_weekly(db)
-        date_key = "week"
-    else:
-        raw_tokens = await data.get_token_usage_monthly(db)
-        raw_api = await data.get_api_calls_by_service_monthly(db)
-        date_key = "month"
+    # Weekly and monthly always use daily-granularity data (for the new chart views).
+    # Daily with a specific date also uses the new path.
+    # Daily without a date falls back to the legacy 30-day aggregated trend.
+    if period in ("weekly", "monthly") or (period == "daily" and date is not None):
+        return await data.get_daily_usage_for_period(db, period, date)
 
-    # Build token chart data (existing behaviour)
+    # Legacy daily path: 30-day aggregated trend (Day tab, no navigation)
+    raw_tokens = await data.get_token_usage_daily(db)
+    raw_api = await data.get_api_calls_by_service_daily(db)
+
     grouped: dict = defaultdict(lambda: {"by_provider": {}, "total": 0, "requests_by_service": {}})
     for row in raw_tokens:
-        key = row[date_key]
+        key = row["date"]
         provider = row["provider"]
         tokens = row["total_tokens"]
         grouped[key]["by_provider"][provider] = tokens
         grouped[key]["total"] += tokens
-        # Also count LLM completions as requests per provider
         grouped[key]["requests_by_service"][provider] = (
             grouped[key]["requests_by_service"].get(provider, 0) + 1
         )
-
-    # Merge non-LLM API call counts into requests_by_service
     for row in raw_api:
-        key = row[date_key]
+        key = row["date"]
         service = row["service"]
         count = row["total_requests"]
         if key not in grouped:
@@ -320,12 +321,7 @@ async def get_usage(
         )
 
     data_out = [
-        {
-            date_key: k,
-            "by_provider": v["by_provider"],
-            "total": v["total"],
-            "requests_by_service": v["requests_by_service"],
-        }
+        {"date": k, "by_provider": v["by_provider"], "total": v["total"], "requests_by_service": v["requests_by_service"]}
         for k, v in sorted(grouped.items())
     ]
     return {"period": period, "data": data_out}
