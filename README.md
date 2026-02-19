@@ -24,6 +24,11 @@
 - ✅ **Database Logging**: SQLite storage for all requests
 - ✅ **YAML Workflow Orchestration**: Human-readable multi-step pipelines
 - ✅ **MCP Tool Integration**: External tool support (web search, files, APIs)
+- ✅ **Web Dashboard**: Built-in monitoring UI at `/dashboard` — usage charts, connection management, cost tracking
+- ✅ **Connection Management**: Add, edit, and monitor 12+ service types (LLMs, media APIs, git platforms, gateways)
+- ✅ **Budget Alerts**: Configurable daily/weekly/monthly spending limits with threshold warnings
+- ✅ **Encrypted Credentials**: Fernet-encrypted API keys and tokens at rest
+- ✅ **Dashboard API**: 18 REST endpoints for programmatic access to all dashboard features
 
 ## 📖 Documentation
 
@@ -105,8 +110,55 @@ cp .env.example .env
 # Run server
 uvicorn aigateway.main:app --host 127.0.0.1 --port 8080 --reload
 ```
+### Open Dashboard
+
+Navigate to `http://127.0.0.1:8080/dashboard` to access the monitoring UI.
+
+First-time users: click **Import from .env** on the Connections page to bring in your existing provider configurations.
+```
+
+*4. Update the Architecture tree to include the new files:*
+```
+aigateway/
+├── api/
+│   ├── completions.py    # /v1/chat/completions
+│   └── dashboard.py      # /api/dashboard/* (18 endpoints)
+├── dashboard/
+│   ├── __init__.py
+│   ├── crypto.py          # Fernet encrypt/decrypt/mask
+│   └── data.py            # Async data access layer
+├── providers/             # LLM provider implementations
+├── storage/               # Database models & migrations
+├── static/
+│   └── index.html         # Dashboard UI (single-file, no build tools)
+├── config.py
+└── main.py
+
 
 📖 **Full installation guide**: [docs/INSTALLATION.md](docs/INSTALLATION.md)
+
+## Dashboard
+
+OpenClaw Hub includes a built-in web dashboard for monitoring and managing your AI infrastructure.
+
+**Access:** `http://127.0.0.1:8080/dashboard`
+
+### Overview
+Real-time stats, token usage charts (daily/weekly/monthly), request distribution, connection health, and budget alerts — all in one view.
+
+### Connection Management
+Manage connections to any service Hub integrates with. A template-driven setup flow supports 12 service types across LLMs, media APIs, git platforms, API gateways, and custom services — each showing only the auth fields that service requires.
+
+Existing providers can be imported from your `.env` configuration with one click. Agents can register new connections programmatically via `POST /api/dashboard/connections`.
+
+### Cost Tracking
+Configure per-model cost-per-token rates, set budget limits, and monitor spending with visual progress bars and threshold alerts.
+
+### Activity Feed
+Every API request logged with model, provider, token counts, cost, latency, and status.
+
+### Security
+All credentials encrypted at rest (Fernet). API keys are masked in all responses and the UI. Dashboard served on localhost only.
 
 ### Test Endpoints
 
@@ -254,8 +306,8 @@ Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
 ## Project Status
 
-**Version**: 1.0.0  
-**Status**: Core features production-ready; orchestration engine and MCP integration in development  
+**Version**: 1.1.0
+**Status**: Production-ready with web dashboard
 **Maintainer**: OpenClaw Community
 
 See [docs/STATUS.md](docs/STATUS.md) for detailed development history and [CHANGELOG.md](CHANGELOG.md) for version history.
