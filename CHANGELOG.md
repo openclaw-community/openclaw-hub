@@ -5,6 +5,21 @@ All notable changes to AI Gateway will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-18
+
+### Added
+- Web dashboard accessible at `http://127.0.0.1:8080/dashboard`
+- Dashboard API endpoints under `/api/dashboard/*`
+- Connection management with template-driven Add flow supporting 13 service types
+- Import from `.env` — one-click import of existing configured providers
+- Token usage charts (daily/weekly/monthly) with per-provider breakdown
+- Cost-per-token configuration with per-model granularity
+- Budget limits (daily/weekly/monthly) with threshold alerts
+- Recent request activity feed
+- Connection health monitoring
+- Encrypted credential storage for API keys and tokens (Fernet symmetric encryption)
+- LLM provider connections automatically sync API keys to `.env`
+
 ## [Unreleased]
 
 ## [1.4.0] - 2026-02-14

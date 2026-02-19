@@ -603,6 +603,18 @@ async def update_cost_config(
     return {"id": config.id, "message": "Cost config updated"}
 
 
+@router.delete("/costs/{config_id}")
+async def delete_cost_config(config_id: int, db: AsyncSession = Depends(get_session)):
+    result = await db.execute(select(CostConfig).where(CostConfig.id == config_id))
+    config = result.scalar_one_or_none()
+    if not config:
+        raise HTTPException(status_code=404, detail=f"Cost config {config_id} not found")
+    model_name = config.model
+    await db.delete(config)
+    await db.commit()
+    return {"message": f"Cost config for '{model_name}' deleted"}
+
+
 # ---------------------------------------------------------------------------
 # Budget
 # ---------------------------------------------------------------------------
