@@ -854,12 +854,38 @@ function renderConnections() {
         <div class="view">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Connections</h2>
-                <button class="btn btn-primary" onclick="openAddConnectionModal()">${ICONS.plus} Add Connection</button>
+                <div style="display:flex;gap:10px">
+                    <button class="btn btn-ghost" onclick="importFromEnv()">${ICONS.refresh} Import from .env</button>
+                    <button class="btn btn-primary" onclick="openAddConnectionModal()">${ICONS.plus} Add Connection</button>
+                </div>
             </div>
             ${infoBanner}
             <div style="display:flex;flex-direction:column;gap:16px">${cards}</div>
         </div>
     `;
+}
+
+async function importFromEnv() {
+    try {
+        showToast('Scanning .env for configured providers...', 'success', 2000);
+        const res = await fetch('/api/dashboard/connections/import-env', { method: 'POST' });
+        const data = await res.json();
+
+        if (!res.ok) {
+            showToast(data.detail || 'Import failed', 'error');
+            return;
+        }
+
+        // Refresh connections list
+        await loadConnections();
+        renderConnections();
+
+        // Show result toast
+        const type = data.imported.length > 0 ? 'success' : 'warning';
+        showToast(data.message, type, 5000);
+    } catch (e) {
+        showToast('Import failed: ' + e.message, 'error');
+    }
 }
 
 // ============================================================
@@ -910,7 +936,7 @@ function renderCosts() {
                 <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${inputFmt}</td>
                 <td style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace">${outputFmt}</td>
                 <td style="padding:12px 16px;text-align:right">
-                    <button class="btn btn-ghost btn-sm" onclick="alert('Edit coming in Phase 5')">${ICONS.edit} Edit</button>
+                    <button class="btn btn-ghost btn-sm" onclick="openCostEditModal(${c.id})">${ICONS.edit} Edit</button>
                 </td>
             </tr>`;
         }).join('');
@@ -919,7 +945,7 @@ function renderCosts() {
         <div class="view">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
                 <h2 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em">Cost Configuration</h2>
-                <button class="btn btn-ghost btn-sm" onclick="alert('Budget edit coming in Phase 5')">${ICONS.settings} Budget Limits</button>
+                <button class="btn btn-ghost btn-sm" onclick="openBudgetModal()">${ICONS.settings} Budget Limits</button>
             </div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px">${budgetBars}</div>
             <div class="card">
@@ -981,6 +1007,122 @@ function renderCostChart() {
             }
         }
     });
+}
+
+// ============================================================
+// COST EDIT MODAL
+// ============================================================
+
+function openCostEditModal(costId) {
+    const cost = costsData.find(c => c.id === costId);
+    if (!cost) return;
+
+    openModal(`
+        <div class="modal-header">
+            <h3 style="margin:0;font-size:18px;font-weight:700">Edit Cost Configuration</h3>
+            <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px">${ICONS.x}</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Model</label>
+            <input class="form-input mono" type="text" value="${cost.model}" readonly style="opacity:0.6;cursor:not-allowed">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Provider</label>
+            <input class="form-input" type="text" value="${cost.provider}" readonly style="opacity:0.6;cursor:not-allowed">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Input Cost (per 1M tokens, USD)</label>
+            <input id="cost-input-val" class="form-input mono" type="number" step="0.01" min="0" value="${cost.input_cost_per_million}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Output Cost (per 1M tokens, USD)</label>
+            <input id="cost-output-val" class="form-input mono" type="number" step="0.01" min="0" value="${cost.output_cost_per_million}">
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+            <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitCostEdit(${costId})">${ICONS.check} Save</button>
+        </div>
+    `);
+}
+
+async function submitCostEdit(costId) {
+    const inputVal = parseFloat(document.getElementById('cost-input-val')?.value) || 0;
+    const outputVal = parseFloat(document.getElementById('cost-output-val')?.value) || 0;
+
+    try {
+        const res = await fetch(`/api/dashboard/costs/${costId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ input_cost_per_million: inputVal, output_cost_per_million: outputVal })
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.detail || 'Update failed', 'error'); return; }
+
+        closeModal();
+        await loadCosts();
+        renderCosts();
+        showToast('Cost configuration updated', 'success');
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+}
+
+// ============================================================
+// BUDGET MODAL
+// ============================================================
+
+function openBudgetModal() {
+    const b = budgetData || { daily_limit_usd: 5, weekly_limit_usd: 25, monthly_limit_usd: 80 };
+
+    openModal(`
+        <div class="modal-header">
+            <h3 style="margin:0;font-size:18px;font-weight:700">Budget Limits</h3>
+            <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px">${ICONS.x}</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Daily Budget (USD)</label>
+            <input id="budget-daily" class="form-input mono" type="number" step="1" min="0" value="${b.daily_limit_usd}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Weekly Budget (USD)</label>
+            <input id="budget-weekly" class="form-input mono" type="number" step="1" min="0" value="${b.weekly_limit_usd}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Monthly Budget (USD)</label>
+            <input id="budget-monthly" class="form-input mono" type="number" step="1" min="0" value="${b.monthly_limit_usd}">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--accent-dim);border-radius:8px;font-size:12px;color:var(--accent);margin-bottom:16px">
+            ${ICONS.alert} Budget alerts appear on the Overview page when usage exceeds 70% of any limit.
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitBudget()">${ICONS.check} Save Limits</button>
+        </div>
+    `);
+}
+
+async function submitBudget() {
+    const daily = parseFloat(document.getElementById('budget-daily')?.value) || 0;
+    const weekly = parseFloat(document.getElementById('budget-weekly')?.value) || 0;
+    const monthly = parseFloat(document.getElementById('budget-monthly')?.value) || 0;
+
+    try {
+        const res = await fetch('/api/dashboard/budget', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ daily_limit_usd: daily, weekly_limit_usd: weekly, monthly_limit_usd: monthly })
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.detail || 'Update failed', 'error'); return; }
+
+        closeModal();
+        budgetData = { daily_limit_usd: daily, weekly_limit_usd: weekly, monthly_limit_usd: monthly };
+        await loadStats(); // refresh stats for updated budget percentages
+        renderCosts();
+        showToast('Budget limits updated', 'success');
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
 }
 
 // ============================================================

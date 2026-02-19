@@ -74,6 +74,70 @@ def _remove_env_key(key: str) -> None:
     print(f'[DASHBOARD] .env key commented out: {key}')
 
 
+# ---------------------------------------------------------------------------
+# Import from .env — provider map
+# ---------------------------------------------------------------------------
+
+ENV_IMPORT_MAP = [
+    {
+        "env_key": "OPENAI_API_KEY",
+        "service": "openai",
+        "name": "OpenAI",
+        "category": "LLM",
+        "credential_field": "api_key",
+        "base_url": "https://api.openai.com/v1",
+    },
+    {
+        "env_key": "ANTHROPIC_API_KEY",
+        "service": "anthropic",
+        "name": "Anthropic",
+        "category": "LLM",
+        "credential_field": "api_key",
+        "base_url": "https://api.anthropic.com/v1",
+    },
+    {
+        "env_key": "OLLAMA_URL",
+        "service": "ollama",
+        "name": "Ollama (Local)",
+        "category": "LLM (Local)",
+        "credential_field": "base_url",  # base_url, not api_key
+        "base_url": None,  # value comes from env
+    },
+    {
+        "env_key": "GITHUB_TOKEN",
+        "service": "github",
+        "name": "GitHub",
+        "category": "Git / DevOps",
+        "credential_field": "token",
+        "base_url": "https://api.github.com",
+    },
+    {
+        "env_key": "LATE_API_KEY",
+        "service": "getlate",
+        "name": "getlate.dev",
+        "category": "Gateway",
+        "credential_field": "api_key",
+        "base_url": "https://api.getlate.dev/v1",
+    },
+    {
+        "env_key": "ELEVENLABS_API_KEY",
+        "service": "elevenlabs",
+        "name": "ElevenLabs",
+        "category": "Media / Audio",
+        "credential_field": "api_key",
+        "base_url": "https://api.elevenlabs.io/v1",
+    },
+    {
+        "env_key": "KIE_API_KEY",
+        "service": "kie",
+        "name": "Kie.ai",
+        "category": "Media / Video",
+        "credential_field": "api_key",
+        "base_url": "https://api.kie.ai",
+    },
+]
+
+
 # Service classification
 LLM_SERVICES = {'openai', 'anthropic', 'ollama', 'openrouter', 'getlate', 'lmstudio', 'custom'}
 
@@ -359,6 +423,91 @@ async def toggle_connection(conn_id: int, db: AsyncSession = Depends(get_session
     await db.commit()
     state = "enabled" if conn.enabled else "disabled"
     return {"id": conn.id, "enabled": conn.enabled, "message": f"Connection '{conn.name}' {state}"}
+
+
+@router.post("/connections/import-env", status_code=200)
+async def import_connections_from_env(db: AsyncSession = Depends(get_session)):
+    """
+    Scan environment variables for configured providers.
+    For each detected provider that doesn't already have a matching connection,
+    create a connection entry. Idempotent — safe to call repeatedly.
+    """
+    import os
+
+    # Get existing connections to check for duplicates (match on service type)
+    existing_result = await db.execute(select(Connection))
+    existing = existing_result.scalars().all()
+    existing_services = {c.service for c in existing}
+
+    fernet_key = get_or_create_secret_key()
+    imported = []
+    skipped = []
+
+    # Always try to import Ollama (it's local, no API key required)
+    ollama_url = os.environ.get("OLLAMA_URL") or "http://127.0.0.1:11434"
+
+    for mapping in ENV_IMPORT_MAP:
+        service = mapping["service"]
+        env_key = mapping["env_key"]
+
+        # Special case: Ollama is always available, use default if env var missing
+        if service == "ollama":
+            raw_value = ollama_url
+        else:
+            raw_value = os.environ.get(env_key, "")
+
+        if not raw_value:
+            # Env var not set — skip
+            continue
+
+        if service in existing_services:
+            skipped.append(mapping["name"])
+            continue
+
+        # Determine field values
+        api_key_plain = ""
+        token_plain = ""
+        base_url = mapping["base_url"] or ""
+
+        if mapping["credential_field"] == "api_key":
+            api_key_plain = raw_value
+        elif mapping["credential_field"] == "token":
+            token_plain = raw_value
+        elif mapping["credential_field"] == "base_url":
+            base_url = raw_value
+
+        conn = Connection(
+            name=mapping["name"],
+            service=service,
+            category=mapping["category"],
+            base_url=base_url,
+            api_key_encrypted=encrypt_value(api_key_plain, fernet_key) if api_key_plain else "",
+            token_encrypted=encrypt_value(token_plain, fernet_key) if token_plain else "",
+            cred_path="",
+            enabled=True,
+        )
+        db.add(conn)
+        imported.append(mapping["name"])
+        print(f'[DASHBOARD] Imported connection from .env: name="{mapping["name"]}", service="{service}"')
+
+    if imported:
+        await db.commit()
+
+    count_i = len(imported)
+    count_s = len(skipped)
+    parts = []
+    if count_i:
+        parts.append(f"Imported {count_i} connection{'s' if count_i != 1 else ''}")
+    if count_s:
+        parts.append(f"skipped {count_s} already registered")
+    if not parts:
+        parts.append("Nothing to import — all providers already registered or no env vars found")
+
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "message": ", ".join(parts),
+    }
 
 
 # ---------------------------------------------------------------------------
