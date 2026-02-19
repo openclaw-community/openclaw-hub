@@ -112,6 +112,26 @@ class CostConfig(Base):
         return f"<CostConfig(model={self.model}, provider={self.provider}, connection_id={self.connection_id})>"
 
 
+class Alert(Base):
+    """Persistent alert records for connection failures and service issues (Issue #29)"""
+    __tablename__ = "alerts"
+
+    id = Column(String, primary_key=True)           # e.g. "alert_20260218_234500_anthropic_consecutive_errors"
+    severity = Column(String, nullable=False)        # warning | error | critical
+    trigger = Column(String, nullable=False)         # consecutive_errors | latency_spike | connection_unreachable | budget_threshold
+    connection = Column(String, nullable=True)       # provider/service name; null = system-wide
+    message = Column(String, nullable=False)
+    details_json = Column(Text, nullable=True)       # JSON string of the `details` dict
+    suggested_action = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    resolved_at = Column(DateTime, nullable=True)
+    resolved = Column(Boolean, default=False, index=True)
+    dismissed = Column(Boolean, default=False)       # user manually dismissed from dashboard
+
+    def __repr__(self):
+        return f"<Alert(id={self.id}, severity={self.severity}, trigger={self.trigger}, resolved={self.resolved})>"
+
+
 class BudgetLimit(Base):
     """Budget limits for dashboard spend tracking"""
     __tablename__ = "budget_limits"
