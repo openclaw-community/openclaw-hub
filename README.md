@@ -6,7 +6,7 @@
 
 > AI-specific ESB middleware for multi-LLM orchestration with MCP integration
 
-**Save 97% on AI costs** by intelligently routing requests to the best provider for each task.
+**Save 90% on AI costs** by intelligently routing requests to the best provider for each task.
 
 ## 🔗 Links
 
