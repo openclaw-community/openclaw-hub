@@ -21,7 +21,7 @@
 ## ⚡ One-Line Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/scripts/install.sh | bash
 ```
 
 Works on **macOS** (Apple Silicon & Intel) and **Linux** (Ubuntu 22.04/24.04+). Requires Python 3.12+ and git.
@@ -95,7 +95,7 @@ If Hub is running as a service, manage it with `launchctl` (macOS) or `systemctl
 ### Fresh install (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/scripts/install.sh | bash
 ```
 
 The installer:
@@ -244,9 +244,15 @@ ALERT_BUDGET_THRESHOLD_PERCENT=90
 
 ```
 openclaw-hub/
-├── install.sh                    # One-line installer (macOS + Linux)
 ├── scripts/
+│   ├── install.sh                # One-line installer (macOS + Linux)
+│   ├── install-macos.sh          # macOS redirect stub → install.sh
+│   ├── install-linux.sh          # Linux redirect stub → install.sh
 │   └── uninstall.sh              # Uninstaller with data backup
+├── examples/
+│   ├── summarize.yaml            # Example: text summarisation workflow
+│   ├── smart-analysis.yaml       # Example: adaptive complexity routing
+│   └── web-research.yaml         # Example: web fetch + LLM analysis
 ├── aigateway/
 │   ├── api/                      # FastAPI routers
 │   │   ├── completions.py        # /v1/chat/completions (retry + fallback)
