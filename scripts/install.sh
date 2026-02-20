@@ -2,7 +2,7 @@
 # OpenClaw Hub — Unified One-Line Installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/scripts/install.sh | bash
 #
 # Environment overrides:
 #   OPENCLAW_HUB_HOME   Install location (default: ~/.openclaw-hub)
@@ -382,7 +382,7 @@ print_success_banner() {
   echo "    Start:   ${start_cmd}"
   echo "    Logs:    ${logs_cmd}"
   echo ""
-  echo "  Update:     curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/install.sh | bash"
+  echo "  Update:     curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/scripts/install.sh | bash"
   echo "  Uninstall:  ~/.openclaw-hub/scripts/uninstall.sh"
   echo "══════════════════════════════════════════════════════════════"
 }

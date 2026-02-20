@@ -15,14 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Visual landing page** (#27): `GET /` now returns a styled HTML landing page for browsers (with health dot live-check) and JSON metadata for API clients — content-negotiated via `Accept` header; Swagger and ReDoc get back-navigation bars
 - **Self-healing** (#26): Auto-retry with configurable exponential backoff (default: 3 attempts, 1s → 5s → 15s); provider fallback routing on retry exhaustion; background health probe loop for degraded providers; startup state file for unexpected-restart detection; `X-Hub-Fallback`, `X-Hub-Original-Provider`, `X-Hub-Actual-Provider` response headers when fallback was used
 - **Push notifications** (#29): Background health monitor checks all enabled connections every 60s for consecutive errors, latency spikes, and budget threshold breaches; `AlertManager` with 15-minute deduplication window and auto-resolve when conditions clear; webhook POST channel; macOS `osascript` / Linux `notify-send` desktop notification channel; `Alert` database table; five new API endpoints under `/api/alerts/`; persistent alert banners on all dashboard views with 30-second live poll and dismiss button
-- **One-line installer** (#28): `curl -fsSL .../install.sh | bash` handles full end-to-end setup on macOS and Linux — preflight checks (Python 3.12+, git), clone to `~/.openclaw-hub/`, venv creation, dependency install, `.env` bootstrap with generated secret key, Ollama auto-detection, launchd (macOS) or systemd `--user` (Linux) service install, 30-second health poll, and browser open; idempotent update mode on re-run; `scripts/uninstall.sh` with data backup
+- **One-line installer** (#28): `curl -fsSL .../scripts/install.sh | bash` handles full end-to-end setup on macOS and Linux — preflight checks (Python 3.12+, git), clone to `~/.openclaw-hub/`, venv creation, dependency install, `.env` bootstrap with generated secret key, Ollama auto-detection, launchd (macOS) or systemd `--user` (Linux) service install, 30-second health poll, and browser open; idempotent update mode on re-run; `scripts/uninstall.sh` with data backup
 - **Provider health tracker** (#26): In-memory per-provider health state (`HEALTHY` / `DEGRADED` / `ERROR`) with consecutive failure/success counters; `ProviderHealthTracker` singleton; lightweight provider probe functions (Ollama: `GET /api/tags`, OpenAI: list models, Anthropic: minimal completion)
 - **New config fields**: `RETRY_*`, `FALLBACK_RULES`, `HEALTH_PROBE_*`, `ALERT_*` settings — all optional with sensible defaults, no `.env` changes required to run
 
 ### Changed
 - `GET /v1/chat/completions` now applies budget enforcement before routing, then retries with backoff, then falls back to configured alternate provider before returning an error
 - Cost config overhaul: `CostConfig` gains a `connection_id` FK (nullable for legacy rows); `Connection` gains `daily_limit_usd`, `weekly_limit_usd`, `monthly_limit_usd`, `budget_override_until`; dashboard cost table groups entries by connection
-- `install-macos.sh` and `install-linux.sh` replaced with redirect stubs that delegate to `install.sh`
+- `scripts/install-macos.sh` and `scripts/install-linux.sh` redirect stubs delegate to `scripts/install.sh`
 - `README.md` rewritten: one-line install front-and-centre, service management reference table, self-healing and alert config snippets, updated architecture diagram
 
 ### Fixed
@@ -160,7 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Awaiting OpenAI Sora API access
 
 - New documentation files:
-  - `GITHUB-INTEGRATION.md` - GitHub usage guide
+  - `docs/GITHUB-INTEGRATION.md` - GitHub usage guide
   - Integration examples in README
 
 ### Changed

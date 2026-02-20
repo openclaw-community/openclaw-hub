@@ -480,7 +480,7 @@ async def startup_event():
     logger.info("workflow_engine_initialized")
 
     # Initialize workflow loader
-    workflow_loader = WorkflowLoader(workflows_dir="./pipelines")
+    workflow_loader = WorkflowLoader(workflows_dir="./examples")
     workflow_loader.load_all()
     logger.info("workflows_loaded", count=len(workflow_loader.workflows))
 

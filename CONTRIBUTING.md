@@ -341,8 +341,8 @@ def test_ollama_error_handling(ollama_provider):
 ### User Documentation
 
 - Update README.md for user-facing changes
-- Add examples to `pipelines/` for new features
-- Update MCP-INTEGRATION.md for tool changes
+- Add examples to `examples/` for new features
+- Update `docs/MCP-INTEGRATION.md` for tool changes
 
 ### API Documentation
 
@@ -353,18 +353,19 @@ FastAPI auto-generates API docs:
 ## Project Structure
 
 ```
-ai-gateway/
+openclaw-hub/
 ├── aigateway/              # Main package
 │   ├── api/               # API endpoints
 │   ├── providers/         # LLM provider implementations
 │   ├── orchestration/     # Workflow engine
 │   ├── mcp/              # MCP integration
 │   └── storage/          # Database models
-├── pipelines/            # Example YAML pipelines
+├── scripts/              # Install and uninstall scripts
+├── examples/             # Example YAML workflow definitions
 ├── tests/               # Test suite
 ├── docs/                # Additional documentation
 └── .github/             # GitHub configuration
-    ├── pipelines/       # CI/CD pipelines
+    ├── workflows/       # CI/CD GitHub Actions
     └── ISSUE_TEMPLATE/  # Issue templates
 ```
 

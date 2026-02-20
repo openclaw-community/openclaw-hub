@@ -34,12 +34,12 @@ Each capability domain has its own discovery endpoint:
 ### User Guides
 
 - **[README.md](../README.md)** - Project overview and quick start
-- **[MCP Integration Guide](../MCP-INTEGRATION.md)** - Using external tools with MCP
-- **[Workflow Guide](../pipelines/README.md)** - Creating YAML workflows
+- **[MCP Integration Guide](./MCP-INTEGRATION.md)** - Using external tools with MCP
+- **[Workflow Guide](../examples/README.md)** - Creating YAML workflows
 
 ### Developer Guides
 
-- **[MVP Plan](../MVP-PLAN.md)** - Original 4-week development plan
+- **[MVP Plan](./MVP-PLAN.md)** - Original 4-week development plan
 - **[Status](../STATUS.md)** - Current project status and roadmap
 - **[Contributing](../CONTRIBUTING.md)** - Development setup and guidelines
 - **[Test Results](../TEST-RESULTS.md)** - Testing documentation

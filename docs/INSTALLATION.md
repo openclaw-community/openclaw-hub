@@ -56,7 +56,7 @@ For production use, install OpenClaw Hub as a system service so it starts automa
 Run the installation script:
 
 ```bash
-./install-macos.sh
+./scripts/install-macos.sh
 ```
 
 **Manual Installation:**
@@ -93,7 +93,7 @@ tail -f gateway.log
 Run the installation script:
 
 ```bash
-./install-linux.sh
+./scripts/install-linux.sh
 ```
 
 **Manual Installation:**
@@ -318,6 +318,6 @@ Then delete the openclaw-hub directory.
 ## Next Steps
 
 - Read the [AI Agent Discovery Guide](AI-AGENT-DISCOVERY.md) to learn how to use the Hub
-- Check out [example workflows](../pipelines/) for orchestration
-- Review [GitHub Integration](../GITHUB-INTEGRATION.md) for repository access
+- Check out [example workflows](../examples/) for orchestration
+- Review [GitHub Integration](./GITHUB-INTEGRATION.md) for repository access
 - Join the community: https://discord.com/invite/clawd

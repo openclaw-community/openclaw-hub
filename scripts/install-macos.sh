@@ -2,7 +2,7 @@
 # ⚠️  This script has been superseded by the unified installer.
 #
 # Please use:
-#   curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/scripts/install.sh | bash
 #
 # Or, if you have the repo cloned already:
 #   bash install.sh
@@ -13,7 +13,7 @@ echo ""
 echo "⚠️  install-macos.sh is deprecated."
 echo ""
 echo "   Please use the unified installer instead:"
-echo "   curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/install.sh | bash"
+echo "   curl -fsSL https://raw.githubusercontent.com/openclaw-community/openclaw-hub/main/scripts/install.sh | bash"
 echo ""
 echo "   Redirecting to install.sh now..."
 echo ""
