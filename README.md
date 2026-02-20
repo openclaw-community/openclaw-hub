@@ -1,5 +1,6 @@
 # OpenClaw Hub
 
+[![CI](https://github.com/openclaw-community/openclaw-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/openclaw-community/openclaw-hub/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org)
 [![Release](https://img.shields.io/github/v/release/openclaw-community/openclaw-hub)](https://github.com/openclaw-community/openclaw-hub/releases)
