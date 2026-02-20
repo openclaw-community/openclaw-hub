@@ -94,31 +94,38 @@ git checkout -b feature/your-feature-name
 
 ### Commit Messages
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
+We use [Conventional Commits](https://www.conventionalcommits.org/). Every commit message must follow this format:
 
 ```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer]
+type: short description
 ```
 
 **Types:**
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes (formatting)
-- `refactor`: Code refactoring
-- `test`: Adding or updating tests
-- `chore`: Maintenance tasks
+
+| Type | When to Use |
+|------|-------------|
+| `feat` | New feature or capability |
+| `fix` | Bug fix |
+| `docs` | Documentation only |
+| `refactor` | Code restructuring (no behavior change) |
+| `test` | Adding or updating tests |
+| `ci` | CI/CD workflow changes |
+| `chore` | Maintenance (dependency updates, release prep) |
 
 **Examples:**
-```bash
-git commit -m "feat(providers): add Google Gemini provider"
-git commit -m "fix(ollama): handle connection timeout gracefully"
-git commit -m "docs(readme): update installation instructions"
 ```
+feat: Add health probe monitoring for degraded connections
+fix: Correct token count calculation for Anthropic streaming responses
+docs: Update installation guide with Windows WSL2 instructions
+refactor: Extract provider routing logic into separate module
+chore: Prepare v1.3.0 release
+```
+
+**Rules:**
+- Use lowercase for the type and description
+- No period at the end
+- Keep the first line under 72 characters
+- Use the imperative mood ("Add feature" not "Added feature")
 
 ## Pull Request Process
 
