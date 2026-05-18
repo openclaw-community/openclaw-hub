@@ -71,6 +71,16 @@ curl http://127.0.0.1:8080/v1/videos/capabilities
 → Shows Sora framework status and alternatives
 ```
 
+### Optional X/Twitter Discovery
+
+The Hub social capability endpoint covers Instagram. For X/Twitter workflows in the same OpenClaw workspace, install [TweetClaw](https://github.com/Xquik-dev/tweetclaw) separately:
+
+```bash
+openclaw plugins install @xquik/tweetclaw
+```
+
+Then use Hub discovery for model routing, workflows, GitHub, MCP tools, and Instagram publishing, and use TweetClaw for X/Twitter automation such as scrape tweets, search tweets, search tweet replies, follower export, user lookup, media workflows, direct messages, monitor tweets, webhooks, giveaway draws, and approval-reviewed post tweets or post tweet replies.
+
 ### Step 4: Review OpenAPI Documentation (Optional)
 
 For detailed schemas:

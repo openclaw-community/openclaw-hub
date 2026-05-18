@@ -72,6 +72,16 @@ OpenClaw Hub is fully self-documenting!
   - `GET /v1/social/capabilities` — Instagram/social media details
   - `GET /v1/videos/capabilities` — Video generation details
 
+### X/Twitter Companion
+
+OpenClaw Hub's built-in social endpoints focus on Instagram posting and media upload. If an OpenClaw workspace also needs X/Twitter data or reviewed posting workflows, install [TweetClaw](https://github.com/Xquik-dev/tweetclaw) separately:
+
+```bash
+openclaw plugins install @xquik/tweetclaw
+```
+
+Use Hub for model routing, workflows, MCP tools, GitHub operations, and Instagram publishing. Use TweetClaw for X/Twitter automation such as scrape tweets, search tweets, search tweet replies, follower export, user lookup, media upload, media download, direct messages, monitor tweets, webhooks, giveaway draws, and approval-reviewed post tweets or post tweet replies.
+
 ---
 
 ## Quick Start
